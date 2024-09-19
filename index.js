@@ -6,7 +6,7 @@ const rl = readline.createInterface({
   output: process.stdout
 });
 
-rl.question('Veuillez entrer le nom de la ville + code postal : ', (city) => {
+rl.question('Veuillez entrer le nom de la ville + code postal, ou département, région etc.. : ', (city) => {
   rl.question('Veuillez entrer l\'objet de votre recherche (ex: hotels) : ', (object) => {
     rl.question('Veuillez entrer le nom du fichier CSV de sortie (ex: resultats.csv) : ', async (fileName) => {
       try {
