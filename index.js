@@ -11,7 +11,6 @@ rl.question('Veuillez entrer le nom de la ville + code postal : ', (city) => {
     rl.question('Veuillez entrer le nom du fichier CSV de sortie (ex: resultats.csv) : ', async (fileName) => {
       try {
         const PagesJaunes = await Pages_jaunes(object, city, fileName);
-        console.log(PagesJaunes);
         console.log('Les informations ont été récupérées avec succès !');
 
       } catch (error) {
