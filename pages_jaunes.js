@@ -119,15 +119,15 @@ export default async function Pages_jaunes (object, city, fileName) {
 
             const nextPageExists = await page.$('#pagination-next');
             if (nextPageExists) {
-                console.log('Attente de 2.5 secondes avant de cliquer sur "Suivant"...');
-                await delay(2500);
+                console.log('Attente de 2 secondes avant de cliquer sur "Suivant"...');
+                await delay(2000);
 
                 try {
                     console.log('Clic sur "Suivant"...');
                     await page.click('#pagination-next');
 
                     await page.waitForSelector('a.bi-denomination.pj-link h3', { visible: true, timeout: 60000 });
-                    await delay(2500);
+                    await delay(1000);
                 } catch (err) {
                     console.error('Erreur lors du passage à la page suivante :', err);
                     hasNextPage = false;
