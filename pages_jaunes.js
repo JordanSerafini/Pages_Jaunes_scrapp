@@ -27,7 +27,7 @@ export default async function Pages_jaunes (object, city, fileName) {
         ]
     });
 
-    const browser = await puppeteer.launch({ headless: false });
+    const browser = await puppeteer.launch({ headless: true });
     try {
         const page = await browser.newPage();
 
