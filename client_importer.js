@@ -1,4 +1,5 @@
-import { Client } from 'pg';
+import pkg from 'pg';
+const { Client } = pkg;
 import fs from 'fs';
 import readline from 'readline';
 import dotenv from 'dotenv';
