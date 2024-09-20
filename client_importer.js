@@ -27,7 +27,7 @@ async function insertCSV() {
   for await (const line of rl) {
     const [name, address, phone] = line.split(',');
     const query = `
-      INSERT INTO "table_name" (name, address, phone)
+      INSERT INTO "restaurant_74" (name, address, phone)
       VALUES ($1, $2, $3)
     `;
     await client.query(query, [name, address, phone]);

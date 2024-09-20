@@ -61,8 +61,12 @@ export default async function Pages_jaunes(object, city, fileName) {
             });
 
             const addresses = await page.evaluate(() => {
-                return Array.from(document.querySelectorAll('a[title="Voir le plan"]')).map(el => el.innerText.trim());
+                return Array.from(document.querySelectorAll('a[title="Voir le plan"]')).map(el => {
+                    const text = el.innerText.trim();
+                    return text.replace('Voir le plan', '').trim();
+                });
             });
+            
 
             let numeros = await page.evaluate(() => {
                 return Array.from(document.querySelectorAll('.number-contact span')).map(el => el.innerText.trim());
