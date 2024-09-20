@@ -48,13 +48,13 @@ export default async function Pages_jaunes(object, city, fileName) {
 
         await page.click('#findId');
         console.log('Recherche soumise...');
-        await delay(2000);
+        await delay(1500);
 
         const allData = [];
         let hasNextPage = true;
 
         while (hasNextPage) {
-            await page.waitForSelector('a.bi-denomination.pj-link h3', { visible: true, timeout: 60000 });
+            await page.waitForSelector('a.bi-denomination.pj-link h3', { visible: true, timeout: 150000 });
             console.log('Résultats de recherche chargés.');
 
             const name = await page.evaluate(() => {
@@ -76,7 +76,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                         .filter(span => span.innerText.includes('Afficher le N°'))
                         .forEach(button => button.click());
                 });
-                await delay(2500);
+                await delay(1500);
 
                 numeros = await page.evaluate(() => {
                     return Array.from(document.querySelectorAll('.number-contact span')).map(el => el.innerText.trim());
@@ -100,10 +100,10 @@ export default async function Pages_jaunes(object, city, fileName) {
             if (nextPageExists) {
                 pageNbr++;
                 console.log('Passage à la page suivante... ', pageNbr, '}');
-                await delay(2200);
+                await delay(2000);
                 try {
                     await page.click('#pagination-next');
-                    await delay(2000);
+                    await delay(1500);
                 } catch (err) {
                     console.error('Erreur lors du passage à la page suivante :', err);
                     hasNextPage = false;
@@ -113,7 +113,6 @@ export default async function Pages_jaunes(object, city, fileName) {
             }
         }
 
-        // Écriture des derniers enregistrements s'il en reste moins de 100
         if (allData.length > 0) {
             await csvWriter.writeRecords(allData);
             console.log('Écriture des derniers enregistrements dans le CSV.');

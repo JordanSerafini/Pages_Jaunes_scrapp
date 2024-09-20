@@ -13,6 +13,7 @@
   "description": "",
   "dependencies": {
     "csv-writer": "^1.6.0",
+    "dotenv": "^16.4.5",
     "puppeteer": "^23.4.0",
     "puppeteer-core": "^23.4.0",
     "puppeteer-extra": "^3.3.6",
