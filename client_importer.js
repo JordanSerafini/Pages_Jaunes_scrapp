@@ -15,7 +15,7 @@ const client = new Client({
 async function insertCSV() {
   await client.connect();
 
-  const fileStream = fs.createReadStream('./ton-fichier.csv'); //! a editer
+  const fileStream = fs.createReadStream('./"chemin vers ton".csv'); //! a editer
   const rl = readline.createInterface({
     input: fileStream,
     crlfDelay: Infinity,
