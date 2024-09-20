@@ -19,3 +19,5 @@ Avant de commencer, assurez-vous d'avoir installé les éléments suivants :
    ```bash
    npm install
    npm start
+
+## If u like it leave a star <3 <3 <3
