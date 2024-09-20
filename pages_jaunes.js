@@ -6,13 +6,11 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
 puppeteer.use(StealthPlugin());
 
-const delay = (time) => new Promise(resolve => setTimeout(resolve, time));
+const delay = (min, max) => new Promise(resolve => setTimeout(resolve, Math.random() * (max - min) + min));
 
 export default async function Pages_jaunes(object, city, fileName) {
-
     let pageNbr = 1;
 
     if (!fileName.endsWith('.csv')) {
@@ -33,22 +31,23 @@ export default async function Pages_jaunes(object, city, fileName) {
     try {
         const page = await browser.newPage();
 
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36');
         console.log('Accès à la page de PagesJaunes...');
         await page.goto('https://www.pagesjaunes.fr/', { waitUntil: 'networkidle2' });
 
         await page.waitForSelector('#didomi-notice-agree-button', { visible: true });
         console.log('Clic sur le bouton "Accepter & Fermer"...');
         await page.click('#didomi-notice-agree-button');
-        await delay(1000);
+        await delay(1000, 2000);
 
         await page.type('#ou', city);
-        await delay(500);
+        await delay(500, 1000);
         await page.type('#quoiqui', object);
-        await delay(500);
+        await delay(500, 1000);
 
         await page.click('#findId');
         console.log('Recherche soumise...');
-        await delay(1500);
+        await delay(1500, 3000);
 
         const allData = [];
         let hasNextPage = true;
@@ -76,7 +75,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                         .filter(span => span.innerText.includes('Afficher le N°'))
                         .forEach(button => button.click());
                 });
-                await delay(1500);
+                await delay(1500, 3000);
 
                 numeros = await page.evaluate(() => {
                     return Array.from(document.querySelectorAll('.number-contact span')).map(el => el.innerText.trim());
@@ -100,10 +99,10 @@ export default async function Pages_jaunes(object, city, fileName) {
             if (nextPageExists) {
                 pageNbr++;
                 console.log('Passage à la page suivante... ', pageNbr, '}');
-                await delay(2000);
+                await delay(2000, 4000);
                 try {
                     await page.click('#pagination-next');
-                    await delay(1500);
+                    await delay(1500, 3000);
                 } catch (err) {
                     console.error('Erreur lors du passage à la page suivante :', err);
                     hasNextPage = false;
