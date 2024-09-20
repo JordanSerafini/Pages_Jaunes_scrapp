@@ -1,8 +1,10 @@
-const { Client } = require('pg');
-const fs = require('fs');
-const readline = require('readline');
-import * as dotenv from 'dotenv';
+import { Client } from 'pg';
+import fs from 'fs';
+import readline from 'readline';
+import dotenv from 'dotenv';
+
 dotenv.config();
+
 
 const client = new Client({
     user: process.env.DB_USER,
