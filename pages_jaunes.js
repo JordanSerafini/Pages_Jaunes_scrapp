@@ -12,6 +12,9 @@ puppeteer.use(StealthPlugin());
 const delay = (time) => new Promise(resolve => setTimeout(resolve, time));
 
 export default async function Pages_jaunes(object, city, fileName) {
+
+    let pageNbr = 1;
+
     if (!fileName.endsWith('.csv')) {
         fileName += '.csv';
     }
@@ -26,7 +29,7 @@ export default async function Pages_jaunes(object, city, fileName) {
         append: true
     });
 
-    const browser = await puppeteer.launch({ headless: false });
+    const browser = await puppeteer.launch({ headless: true });
     try {
         const page = await browser.newPage();
 
@@ -95,8 +98,9 @@ export default async function Pages_jaunes(object, city, fileName) {
 
             const nextPageExists = await page.$('#pagination-next');
             if (nextPageExists) {
-                console.log('Passage à la page suivante...');
-                await delay(3000);
+                pageNbr++;
+                console.log('Passage à la page suivante... ', pageNbr, '}');
+                await delay(2200);
                 try {
                     await page.click('#pagination-next');
                     await delay(2000);
