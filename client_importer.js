@@ -6,7 +6,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-
 const client = new Client({
     user: process.env.DB_USER,
     host: process.env.DB_HOST,
@@ -18,7 +17,7 @@ const client = new Client({
 async function insertCSV() {
   await client.connect();
 
-  const fileStream = fs.createReadStream('./restaurant_74.csv'); //! a editer
+  const fileStream = fs.createReadStream('./restaurant_74.csv');
   const rl = readline.createInterface({
     input: fileStream,
     crlfDelay: Infinity,
