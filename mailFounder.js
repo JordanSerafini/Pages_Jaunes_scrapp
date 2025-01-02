@@ -3,6 +3,14 @@ import puppeteer from 'puppeteer';
 // Fonction de délai
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Fonction pour extraire les emails
+const extractEmails = (htmlContent) => {
+    // Expression régulière pour extraire les emails
+    const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+    const emails = htmlContent.match(emailRegex);
+    return emails ? [...new Set(emails)] : []; // Enlever les doublons et renvoyer un tableau
+};
+
 // Fonction principale
 const fetchGoogleSearchHTML = async (query) => {
     const browser = await puppeteer.launch({ headless: false });
@@ -38,7 +46,12 @@ const fetchGoogleSearchHTML = async (query) => {
         const htmlContent = await page.content();
 
         console.log('HTML extrait avec succès.');
-        return htmlContent;
+        
+        // Extraire les emails du HTML
+        const emails = extractEmails(htmlContent);
+        console.log('Emails extraits:', emails);
+
+        return emails;
 
     } catch (err) {
         console.error('Erreur lors de la recherche Google :', err.message);
