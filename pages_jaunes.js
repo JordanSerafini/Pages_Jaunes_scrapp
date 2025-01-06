@@ -27,10 +27,11 @@ export default async function Pages_jaunes(object, city, fileName) {
         append: true
     });
 
-    const browser = await puppeteer.launch({ headless: true });
+    const browser = await puppeteer.launch({ headless: false });
     try {
         const page = await browser.newPage();
 
+        
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36');
         console.log('Accès à la page de PagesJaunes...');
         await page.goto('https://www.pagesjaunes.fr/', { waitUntil: 'networkidle2' });
