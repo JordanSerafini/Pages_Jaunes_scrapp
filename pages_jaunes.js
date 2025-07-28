@@ -345,21 +345,36 @@ export default async function Pages_jaunes(object, city, fileName) {
 
                         info.phone = phoneNumbers.join('; ');
 
-                        // Site web
-                        const websiteSelectors = [
-                            'a.SITE_EXTERNE',
-                            'a[href*="http"]',
-                            '.website-link',
-                            'span.value:contains("www")'
-                        ];
+                        // Site web - récupération depuis l'attribut data-pjlb (base64)
+                        const websiteElement = document.querySelector('a.SITE_EXTERNE');
+                        if (websiteElement) {
+                            try {
+                                // Récupérer l'URL depuis l'attribut data-pjlb
+                                const dataPjlb = websiteElement.getAttribute('data-pjlb');
+                                if (dataPjlb) {
+                                    const dataObj = JSON.parse(dataPjlb);
+                                    if (dataObj.url) {
+                                        // Décoder l'URL base64
+                                        const decodedUrl = atob(dataObj.url);
+                                        if (decodedUrl && decodedUrl.includes('http')) {
+                                            info.website = decodedUrl;
+                                            console.log(`Site web trouvé: ${decodedUrl}`);
+                                        }
+                                    }
+                                }
+                            } catch (error) {
+                                console.log('Erreur lors du décodage du site web:', error);
+                            }
+                        }
                         
-                        for (const selector of websiteSelectors) {
-                            const websiteElement = document.querySelector(selector);
-                            if (websiteElement) {
-                                const href = websiteElement.href || websiteElement.innerText.trim();
-                                if (href && href.includes('www')) {
-                                    info.website = href;
-                                    break;
+                        // Fallback: chercher dans le texte affiché
+                        if (!info.website) {
+                            const websiteText = document.querySelector('a.SITE_EXTERNE span.value');
+                            if (websiteText) {
+                                const text = websiteText.innerText.trim();
+                                if (text && text.includes('www')) {
+                                    info.website = text;
+                                    console.log(`Site web trouvé (texte): ${text}`);
                                 }
                             }
                         }
@@ -409,9 +424,10 @@ export default async function Pages_jaunes(object, city, fileName) {
                 }
             }
 
-            if (allData.length >= 100) {
-                await csvWriter.writeRecords(allData.splice(0, 100));
-                console.log('Écriture de 100 enregistrements dans le CSV...');
+            // Écrire les données par petits lots pour éviter la perte de données
+            if (allData.length >= 50) {
+                await csvWriter.writeRecords(allData.splice(0, 50));
+                console.log('Écriture de 50 enregistrements dans le CSV...');
             }
 
             const nextPageExists = await page.$('#pagination-next');
