@@ -108,7 +108,7 @@ async function extractInfoFromPage(page) {
 
         // Final sanity check for name: if it's still a number or too generic after all attempts, reset it
         if (info.name) {
-            const normalizedFinalName = info.name.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
+            const normalizedFinalName = info.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
             if (normalizedFinalName.length < 4 || /^\\d+$/.test(normalizedFinalName) || normalizedFinalName.includes('pagesjaunes')) {
                 console.log(`Nom final "${info.name}" seems generic/numeric after normalization, resetting.`);
                 info.name = ''; // Reset to empty string so 'Nom non trouvé' can be applied by cleanData
@@ -156,7 +156,7 @@ async function extractInfoFromPage(page) {
             const elements = document.querySelectorAll(selector);
             elements.forEach(el => {
                 const text = el.innerText.trim();
-                if (/^(0[1-9])(\\d{8})$/.test(text.replace(/\s/g, ''))) {
+                if (/^(0[1-9])(\\d{8})$/.test(text.replace(/\\s/g, ''))) {
                     phoneNumbers.push(text);
                 }
             });
@@ -313,7 +313,7 @@ export default async function Pages_jaunes(object, city, fileName) {
         let normalized = name
             .toLowerCase()
             .normalize('NFD')
-            .replace(/[\\u0300-\\u036f]/g, '') // Supprimer les accents
+            .replace(/[\u0300-\u036f]/g, '') // Supprimer les accents
             .replace(/[^a-z0-9\\s]/g, '') // Garder lettres, chiffres et espaces
             .replace(/\\s+/g, ' ') // Remplacer les espaces multiples par un seul
             .trim();
@@ -323,7 +323,7 @@ export default async function Pages_jaunes(object, city, fileName) {
             const normalizedAddress = address
                 .toLowerCase()
                 .normalize('NFD')
-                .replace(/[\\u0300-\\u036f]/g, '')
+                .replace(/[\u0300-\u036f]/g, '')
                 .replace(/[^a-z0-9\\s]/g, '')
                 .replace(/\\s+/g, ' ')
                 .trim();
@@ -344,7 +344,7 @@ export default async function Pages_jaunes(object, city, fileName) {
             }
         }
         return normalized;
-    };
+    }
 
 
     let totalResults = 0; // Déclarer totalResults ici, si ce n'est pas déjà fait
@@ -471,7 +471,6 @@ export default async function Pages_jaunes(object, city, fileName) {
             // Le clic a déjà été effectué directement sur le bouton trouvé
             console.log('Gestion des cookies terminée.');
             await delayShort();
-            
             // Mini-test pour iframe lazy-load après le clic initial
             await page.$('button[aria-label*="données"]')?.click().catch(() => console.log('Pas de bouton de cookies lazy-load trouvé ou cliqué.'));
 
@@ -586,7 +585,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                     console.log('Aucun élément de nombre de résultats trouvé.');
                 }
             } catch (error) {
-                console.error(`Erreur lors de l'extraction du nombre de résultats :`, error.message);
+                console.error('Erreur lors de l\'extraction du nombre de résultats :', error.message);
             }
 
             // Vérifier que nous sommes bien sur une page de résultats
@@ -709,7 +708,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                 const isValidProsLink = (link.includes('/pros/') &&
                                        !link.includes('chercherlespros') &&
                                        !link.includes('recherche') &&
-                                       (link.match(/\/pros\/\d+/) || link.includes('code_etablissement='))); // Accepte les liens avec code_etablissement
+                                       (link.match(/\/pros\/\\d+/) || link.includes('code_etablissement='))); // Accepte les liens avec code_etablissement
 
                 if (!isValidProsLink) {
                     console.log(`Lien filtré: ${link}`);
@@ -820,15 +819,7 @@ export default async function Pages_jaunes(object, city, fileName) {
               try {
                 await Promise.all([
                   nextBtn.click(),
-                  page.waitForFunction(
-                    (prev) => {
-                      const cur = [...document.querySelectorAll('li.bi')]
-                                  .slice(0,3).map(e => e.textContent.trim());
-                      return JSON.stringify(cur) !== JSON.stringify(prev);
-                    },
-                    {timeout: 25000}, // Augmenter le timeout pour la stabilité
-                    before
-                  ),
+                  page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 40000 }), // Attendre la navigation
                   page.waitForTimeout(500 + Math.random() * 800) // Petit delay random anti-bot
                 ]);
 
@@ -860,7 +851,7 @@ export default async function Pages_jaunes(object, city, fileName) {
         } else {
             console.log(`Total final d'entreprises traitées: ${totalProcessed}`);
             if (!totalResults) {
-                console.warn("⚠️ Impossible de déterminer le nombre total d'entreprises. Le sélecteur a peut-être changé.");
+                console.warn('⚠️ Impossible de déterminer le nombre total d\'entreprises. Le sélecteur a peut-être changé.');
             }
         }
 
