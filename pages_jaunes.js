@@ -37,7 +37,7 @@ export default async function Pages_jaunes(object, city, fileName) {
 
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36');
         console.log('Accès à la page de PagesJaunes...');
-        await page.goto('https://www.pagesjaunes.fr/', { waitUntil: 'networkidle2' });
+        await page.goto('https://www.pagesjaunes.fr/', { waitUntil: 'domcontentloaded' });
 
         // Gestion des cookies
         console.log('Tentative de gestion des cookies...');
@@ -109,7 +109,7 @@ export default async function Pages_jaunes(object, city, fileName) {
 
         await page.click('#findId');
         console.log('Recherche soumise...');
-        await delay(1500, 3000);
+        await delay(1000, 2000);
 
         const allData = [];
         let hasNextPage = true;
@@ -693,8 +693,13 @@ export default async function Pages_jaunes(object, city, fileName) {
                 
                 // Revenir à la page de résultats après avoir traité tous les liens
                 console.log('Retour à la page de résultats...');
-                await page.goBack();
-                await delay(2000, 4000);
+                
+                // Sauvegarder l'URL de la page de résultats originale
+                const resultsPageUrl = `https://www.pagesjaunes.fr/recherche?quoiqui=${encodeURIComponent(object)}&ou=${encodeURIComponent(city)}`;
+                
+                // Naviguer directement vers la page de résultats
+                await page.goto(resultsPageUrl, { waitUntil: 'networkidle2' });
+                await delay(1000, 2000); // Délai réduit
                 
                 // Vérifier que nous sommes bien sur la page de résultats
                 const isBackOnResultsPage = await page.evaluate(() => {
@@ -705,10 +710,9 @@ export default async function Pages_jaunes(object, city, fileName) {
                 });
                 
                 if (!isBackOnResultsPage) {
-                    console.log('Pas revenu sur la page de résultats, tentative de navigation...');
-                    // Essayer de revenir à la page de recherche originale
-                    await page.goto(`https://www.pagesjaunes.fr/recherche?quoiqui=${encodeURIComponent(object)}&ou=${encodeURIComponent(city)}`, { waitUntil: 'networkidle2' });
-                    await delay(2000, 4000);
+                    console.log('Erreur lors du retour à la page de résultats');
+                } else {
+                    console.log('Retour réussi à la page de résultats');
                 }
             }
 
