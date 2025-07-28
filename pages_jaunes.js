@@ -408,7 +408,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                         
                         // Revenir à la page de résultats
                         await page.goBack();
-                        await delay(2000, 4000);
+                        await delay(1000, 2000);
                         
                     } catch (error) {
                         console.error(`Erreur lors du clic sur l'élément ${i + 1}:`, error);
@@ -793,7 +793,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                     try {
                         // Cliquer sur le bouton "Suivant"
                         await nextPageButton.click();
-                        await delay(3000, 5000); // Délai plus long après le clic
+                        await delay(1500, 2500); // Délai réduit après le clic
 
                         const currentUrlAfterClick = await page.url();
                         if (currentUrlAfterClick !== previousUrl) {
