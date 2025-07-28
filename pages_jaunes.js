@@ -430,19 +430,26 @@ export default async function Pages_jaunes(object, city, fileName) {
                 console.log('Écriture de 50 enregistrements dans le CSV...');
             }
 
+            // Vérifier s'il y a une page suivante
             const nextPageExists = await page.$('#pagination-next');
             if (nextPageExists) {
                 pageNbr++;
-                console.log('Passage à la page suivante... ', pageNbr, '}');
+                console.log(`Passage à la page suivante... ${pageNbr}`);
                 await delay(2000, 4000);
                 try {
                     await page.click('#pagination-next');
                     await delay(1500, 3000);
+                    
+                    // Vérifier que la page a bien changé
+                    const currentUrl = await page.url();
+                    console.log(`URL actuelle après clic: ${currentUrl}`);
+                    
                 } catch (err) {
                     console.error('Erreur lors du passage à la page suivante :', err);
                     hasNextPage = false;
                 }
             } else {
+                console.log('Aucune page suivante trouvée, fin du traitement.');
                 hasNextPage = false;
             }
         }
