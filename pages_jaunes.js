@@ -690,6 +690,26 @@ export default async function Pages_jaunes(object, city, fileName) {
                         console.error(`Erreur lors du traitement de l'entreprise ${i + 1}:`, error);
                     }
                 }
+                
+                // Revenir à la page de résultats après avoir traité tous les liens
+                console.log('Retour à la page de résultats...');
+                await page.goBack();
+                await delay(2000, 4000);
+                
+                // Vérifier que nous sommes bien sur la page de résultats
+                const isBackOnResultsPage = await page.evaluate(() => {
+                    return document.querySelector('.bi-list') !== null || 
+                           document.querySelector('li.bi') !== null ||
+                           window.location.href.includes('/recherche') ||
+                           window.location.href.includes('/chercherlespros');
+                });
+                
+                if (!isBackOnResultsPage) {
+                    console.log('Pas revenu sur la page de résultats, tentative de navigation...');
+                    // Essayer de revenir à la page de recherche originale
+                    await page.goto(`https://www.pagesjaunes.fr/recherche?quoiqui=${encodeURIComponent(object)}&ou=${encodeURIComponent(city)}`, { waitUntil: 'networkidle2' });
+                    await delay(2000, 4000);
+                }
             }
 
             // Écrire les données par petits lots pour éviter la perte de données
@@ -868,24 +888,26 @@ export default async function Pages_jaunes(object, city, fileName) {
                     // Essayer de construire l'URL de la page suivante
                     let nextPageUrl = null;
                     
+                    // Construire l'URL de recherche originale pour la pagination
+                    const searchUrl = `https://www.pagesjaunes.fr/recherche?quoiqui=${encodeURIComponent(object)}&ou=${encodeURIComponent(city)}`;
+                    
                     if (currentUrl.includes('page=')) {
                         const pageMatch = currentUrl.match(/page=(\d+)/);
                         if (pageMatch) {
                             const currentPage = parseInt(pageMatch[1]);
-                            nextPageUrl = currentUrl.replace(`page=${currentPage}`, `page=${currentPage + 1}`);
+                            nextPageUrl = searchUrl + `&page=${currentPage + 1}`;
                             console.log(`Tentative de navigation vers la page suivante: ${nextPageUrl}`);
                         }
                     } else if (currentUrl.includes('p=')) {
                         const pageMatch = currentUrl.match(/p=(\d+)/);
                         if (pageMatch) {
                             const currentPage = parseInt(pageMatch[1]);
-                            nextPageUrl = currentUrl.replace(`p=${currentPage}`, `p=${currentPage + 1}`);
+                            nextPageUrl = searchUrl + `&p=${currentPage + 1}`;
                             console.log(`Tentative de navigation vers la page suivante: ${nextPageUrl}`);
                         }
                     } else {
-                        // Si pas de paramètre de page, ajouter page=2
-                        const separator = currentUrl.includes('?') ? '&' : '?';
-                        nextPageUrl = `${currentUrl}${separator}page=2`;
+                        // Si pas de paramètre de page, ajouter page=2 à l'URL de recherche
+                        nextPageUrl = searchUrl + `&page=2`;
                         console.log(`Tentative de navigation vers la page suivante: ${nextPageUrl}`);
                     }
                 
