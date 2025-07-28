@@ -364,36 +364,31 @@ export default async function Pages_jaunes(object, city, fileName) {
 
                         info.phone = phoneNumbers.join('; ');
 
-                        // Site web - récupération depuis l'attribut data-pjlb (base64)
-                        const websiteElement = document.querySelector('a.SITE_EXTERNE');
+                        // Site web - récupération directe depuis le texte affiché
+                        const websiteElement = document.querySelector('a.SITE_EXTERNE span.value');
                         if (websiteElement) {
-                            try {
-                                // Récupérer l'URL depuis l'attribut data-pjlb
-                                const dataPjlb = websiteElement.getAttribute('data-pjlb');
-                                if (dataPjlb) {
-                                    const dataObj = JSON.parse(dataPjlb);
-                                    if (dataObj.url) {
-                                        // Décoder l'URL base64
-                                        const decodedUrl = atob(dataObj.url);
-                                        if (decodedUrl && decodedUrl.includes('http')) {
-                                            info.website = decodedUrl;
-                                            console.log(`Site web trouvé: ${decodedUrl}`);
-                                        }
-                                    }
-                                }
-                            } catch (error) {
-                                console.log('Erreur lors du décodage du site web:', error);
+                            const text = websiteElement.innerText.trim();
+                            if (text && text.includes('www')) {
+                                info.website = text;
+                                console.log(`Site web trouvé: ${text}`);
                             }
                         }
-                        
-                        // Fallback: chercher dans le texte affiché
+
+                        // Fallback: chercher des liens génériques (moins précis)
                         if (!info.website) {
-                            const websiteText = document.querySelector('a.SITE_EXTERNE span.value');
-                            if (websiteText) {
-                                const text = websiteText.innerText.trim();
-                                if (text && text.includes('www')) {
-                                    info.website = text;
-                                    console.log(`Site web trouvé (texte): ${text}`);
+                            const genericWebsiteSelectors = [
+                                'a[href*="http"]',
+                                '.website-link'
+                            ];
+                            for (const selector of genericWebsiteSelectors) {
+                                const genericWebsiteElement = document.querySelector(selector);
+                                if (genericWebsiteElement) {
+                                    const href = genericWebsiteElement.href || genericWebsiteElement.innerText.trim();
+                                    if (href && href.includes('www')) {
+                                        info.website = href;
+                                        console.log(`Site web trouvé (générique): ${href}`);
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -452,20 +447,70 @@ export default async function Pages_jaunes(object, city, fileName) {
             // Vérifier s'il y a une page suivante
             const nextPageExists = await page.$('#pagination-next');
             if (nextPageExists) {
+                // Vérifier que le bouton est cliquable
+                const isClickable = await page.evaluate(() => {
+                    const nextButton = document.querySelector('#pagination-next');
+                    if (nextButton) {
+                        const style = window.getComputedStyle(nextButton);
+                        return style.pointerEvents !== 'none' && 
+                               !nextButton.disabled && 
+                               nextButton.offsetParent !== null;
+                    }
+                    return false;
+                });
+                
+                if (!isClickable) {
+                    console.log('Bouton "Suivant" trouvé mais non cliquable.');
+                    hasNextPage = false;
+                    break;
+                }
                 pageNbr++;
                 console.log(`Passage à la page suivante... ${pageNbr}`);
                 await delay(2000, 4000);
                 try {
+                    // Cliquer sur le bouton "Suivant"
                     await page.click('#pagination-next');
-                    await delay(1500, 3000);
+                    console.log('Clic sur le bouton "Suivant" effectué.');
+                    await delay(3000, 5000);
+                    
+                    // Si le clic n'a pas fonctionné, essayer une méthode alternative
+                    const currentUrlBefore = await page.url();
+                    await page.evaluate(() => {
+                        const nextButton = document.querySelector('#pagination-next');
+                        if (nextButton) {
+                            nextButton.click();
+                        }
+                    });
+                    await delay(2000, 3000);
+                    
+                    const currentUrlAfter = await page.url();
+                    if (currentUrlBefore === currentUrlAfter) {
+                        console.log('Le clic n\'a pas changé l\'URL, tentative alternative...');
+                        // Essayer de cliquer sur le span à l'intérieur du bouton
+                        await page.click('#pagination-next span.value');
+                        await delay(2000, 3000);
+                    }
                     
                     // Vérifier que la page a bien changé
                     const currentUrl = await page.url();
                     console.log(`URL actuelle après clic: ${currentUrl}`);
                     
                     // Attendre que les nouveaux résultats se chargent
-                    await page.waitForSelector('a.bi-denomination.pj-link h3', { visible: true, timeout: 10000 });
+                    await page.waitForSelector('a.bi-denomination.pj-link h3', { visible: true, timeout: 15000 });
                     console.log('Nouveaux résultats chargés.');
+                    
+                    // Vérifier que nous sommes bien sur une nouvelle page
+                    const newPageNumber = await page.evaluate(() => {
+                        const pageInfo = document.querySelector('.pagination-info');
+                        if (pageInfo) {
+                            return pageInfo.textContent;
+                        }
+                        return null;
+                    });
+                    
+                    if (newPageNumber) {
+                        console.log(`Page actuelle: ${newPageNumber}`);
+                    }
                     
                 } catch (err) {
                     console.error('Erreur lors du passage à la page suivante :', err);
