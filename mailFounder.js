@@ -1,4 +1,7 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+
+puppeteer.use(StealthPlugin());
 
 // Fonction de délai
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -21,22 +24,24 @@ export const fetchGoogleSearchHTML = async (query) => {
 
         // Aller sur la page Google
         await page.goto('https://www.google.com', { waitUntil: 'domcontentloaded' });
+        await delay(2000); // Ajouter un délai après le goto
 
         // Accepter les cookies si le bouton est présent
         const acceptCookiesSelector = '#L2AGLb';
         if (await page.$(acceptCookiesSelector)) {
             console.log('Accepter les cookies...');
             await page.click(acceptCookiesSelector);
-            await delay(1000);
+            await delay(2000); // Augmenter le délai après avoir accepté les cookies
         }
 
         // Trouver la barre de recherche et entrer la requête
         const searchBoxSelector = '#APjFqb';
         if (await page.$(searchBoxSelector)) {
             console.log('Entrer la requête dans la barre de recherche...');
-            await page.type(searchBoxSelector, query, { delay: 100 });
+            await page.type(searchBoxSelector, query, { delay: 200 }); // Augmenter le délai de frappe
             await page.keyboard.press('Enter');
             await page.waitForNavigation({ waitUntil: 'networkidle2' });
+            await delay(3000); // Ajouter un délai après la navigation
         } else {
             throw new Error('Le champ de recherche Google est introuvable.');
         }
@@ -61,14 +66,3 @@ export const fetchGoogleSearchHTML = async (query) => {
         console.log('Navigateur fermé.');
     }
 };
-
-// Exemple d'utilisation
-(async () => {
-    const query = 'contact email Résidence Hôtelière Les Chataigniers 146 route Lornard 74410 Saint Jorioz 04 50 68 63 29';
-    const html = await fetchGoogleSearchHTML(query);
-    
-    if (html) {
-        console.log('HTML de la page Google :');
-        console.log(html);
-    }
-})();
