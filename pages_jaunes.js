@@ -271,7 +271,7 @@ export default async function Pages_jaunes(object, city, fileName) {
     });
 
     const browser = await puppeteer.launch({ 
-        headless: true, 
+        headless: false, 
         protocolTimeout: 120000, // Augmenter le timeout
         args: [
             '--no-sandbox',
@@ -290,68 +290,74 @@ export default async function Pages_jaunes(object, city, fileName) {
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36');
         console.log('Accès à la page de PagesJaunes...');
         await page.goto('https://www.pagesjaunes.fr/', { waitUntil: 'domcontentloaded' });
+        
+        // Attendre un peu que la page se charge complètement
+        await delayShort();
+        console.log('Page chargée, attente de la popup de cookies...');
 
         // Gestion des cookies
         console.log('Tentative de gestion des cookies...');
         try {
-            await page.waitForSelector('iframe', { visible: true, timeout: 10000 });
+            console.log('Attente de la popup de cookies...');
             
-            const frames = page.frames();
-            const cookieFrame = frames.find(frame => 
-                frame.url().includes('didomi') || 
-                frame.url().includes('cookie') ||
-                frame.url().includes('consent')
-            ) || frames[1];
+            // Attendre que la page soit complètement chargée
+            await page.waitForFunction(() => document.readyState === 'complete');
             
-            if (cookieFrame) {
-                console.log('Frame de cookies trouvé, tentative de clic...');
-                
-                await cookieFrame.waitForSelector('button.button_acceptAll, button[aria-label="Accepter la collecte de vos données"]', { 
-                    visible: true, 
-                    timeout: 3000 
-                });
-                
-                const cookieSelectors = [
-                    'button.button_acceptAll',
-                    'button[aria-label="Accepter la collecte de vos données"]',
-                    'button[aria-label*="Accepter"]'
-                ];
-                
-                let cookieClicked = false;
-                for (const selector of cookieSelectors) {
+            // Attendre un peu plus pour que les scripts se chargent
+            await delayShort();
+            
+            // Essayer plusieurs approches pour trouver le bouton cookie
+            let cookieButton = null;
+            
+            // 1. Chercher directement dans la page principale
+            cookieButton = await page.$('button[aria-label="Accepter la collecte de vos données"]');
+            if (cookieButton) {
+                console.log('Bouton cookie trouvé dans la page principale');
+            }
+            
+            // 2. Si pas trouvé, chercher dans les iframes
+            if (!cookieButton) {
+                console.log('Recherche dans les iframes...');
+                const frames = page.frames();
+                for (const frame of frames) {
                     try {
-                        const button = await cookieFrame.$(selector);
-                        if (button) {
-                            console.log(`Clic sur le bouton cookie avec le sélecteur: ${selector}`);
-                            await button.click();
-                            cookieClicked = true;
+                        const frameButton = await frame.$('button[aria-label="Accepter la collecte de vos données"]');
+                        if (frameButton) {
+                            console.log('Bouton cookie trouvé dans un iframe');
+                            cookieButton = frameButton;
                             break;
                         }
-                    } catch (err) {
-                        console.log(`Sélecteur ${selector} non trouvé dans l'iframe, essai suivant...`);
+                    } catch (e) {
+                        console.log('Erreur lors de la recherche dans un iframe:', e.message);
                     }
-                }
-                
-                if (!cookieClicked) {
-                    await cookieFrame.evaluate(() => {
-                        const buttons = Array.from(document.querySelectorAll('button'));
-                        const acceptButton = buttons.find(btn => 
-                            btn.textContent.includes('Accepter') || 
-                            btn.textContent.includes('Accept')
-                        );
-                        if (acceptButton) {
-                            acceptButton.click();
-                            return true;
-                        }
-                        return false;
-                    });
                 }
             }
             
+            // 3. Si toujours pas trouvé, essayer avec un délai
+            if (!cookieButton) {
+                console.log('Attente supplémentaire pour la popup...');
+                await delayShort();
+                cookieButton = await page.$('button[aria-label="Accepter la collecte de vos données"]');
+            }
+            
+            if (cookieButton) {
+                console.log('Bouton cookie trouvé, tentative de clic...');
+                // Cliquer directement sur le bouton trouvé
+                await cookieButton.click();
+                console.log('Clic sur le bouton cookie réussi');
+                await delayShort();
+            } else {
+                console.log('Aucun bouton cookie trouvé, continuation...');
+                return; // Sortir de la fonction si aucun bouton trouvé
+            }
+            
+            // Le clic a déjà été effectué directement sur le bouton trouvé
             console.log('Gestion des cookies terminée.');
             await delayShort();
+            
         } catch (error) {
             console.log('Aucune popup de cookies détectée ou déjà gérée.');
+            console.log('Erreur détaillée:', error.message);
         }
 
         await page.type('#ou', city);
@@ -407,7 +413,7 @@ export default async function Pages_jaunes(object, city, fileName) {
         let hasNextPage = true;
 
         // Taille du batch pour traiter les entreprises
-        const poolSize = 3; // nombre de fiches traitées par batch
+        const poolSize = 5;
 
         while (hasNextPage) {
             // Attendre que les résultats se chargent avec les nouveaux sélecteurs
