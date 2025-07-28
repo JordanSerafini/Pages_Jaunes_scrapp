@@ -111,6 +111,40 @@ export default async function Pages_jaunes(object, city, fileName) {
         console.log('Recherche soumise...');
         await delay(1000, 2000);
 
+        // Nouvelle logique pour gérer la page de désambiguïsation
+        const isDisambiguationPage = await page.evaluate(() => {
+            return document.querySelector('h1.title-1') && document.querySelector('h1.title-1').innerText.includes('PagesJaunes vous propose');
+        });
+
+        if (isDisambiguationPage) {
+            console.log('Page de désambiguïsation détectée, tentative de sélection de la ville...');
+            try {
+                // Essayer de cliquer sur le lien correspondant à la ville recherchée
+                const clicked = await page.evaluate((expectedCity) => {
+                    const links = Array.from(document.querySelectorAll('.results-text-loc a'));
+                    const targetLink = links.find(link => link.innerText.includes(expectedCity));
+                    if (targetLink) {
+                        targetLink.click();
+                        return true;
+                    }
+                    return false;
+                }, city); // 'city' est la variable passée à la fonction evaluate
+
+                if (clicked) {
+                    await delay(2000, 3000); // Attendre la navigation après le clic
+                    console.log('Clic sur la ville de désambiguïsation réussi.');
+                } else {
+                    console.log('Lien de ville spécifique non trouvé, tentative de clic sur le premier lien de localité...');
+                    await page.click('.results-text-loc a'); // Clique sur le premier lien de localité
+                    await delay(2000, 3000);
+                    console.log('Clic sur le premier lien de localité réussi.');
+                }
+            } catch (error) {
+                console.error('Erreur lors de la sélection de la ville sur la page de désambiguïsation :', error);
+                console.log('Impossible de cliquer sur un lien de localité, poursuite sans action spécifique.');
+            }
+        }
+
         const allData = [];
         let hasNextPage = true;
 
@@ -251,183 +285,9 @@ export default async function Pages_jaunes(object, city, fileName) {
             
             console.log(`Liens valides trouvés: ${validDetailLinks.length}/${detailLinks.length}`);
             
-            // Si nous n'avons pas assez de liens, essayer une méthode alternative
-            if (validDetailLinks.length < detailLinks.length) {
-                console.log('Peu de liens trouvés, tentative de méthode alternative...');
-                
-                // Méthode alternative : cliquer directement sur chaque listing
-                const alternativeLinks = await page.evaluate(async () => {
-                    const businessListings = document.querySelectorAll('li.bi');
-                    const links = [];
-                    
-                    for (let i = 0; i < businessListings.length; i++) {
-                        const listing = businessListings[i];
-                        
-                        // Essayer de cliquer sur le div cliquable
-                        const clickableDiv = listing.querySelector('.bi-clic-mobile');
-                        if (clickableDiv) {
-                            // Sauvegarder l'URL actuelle
-                            const currentUrl = window.location.href;
-                            
-                            // Cliquer sur le div
-                            clickableDiv.click();
-                            
-                            // Attendre un peu pour que la navigation se fasse
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-                            
-                            // Vérifier si l'URL a changé
-                            if (window.location.href !== currentUrl && window.location.href.includes('/pros/')) {
-                                links.push(window.location.href);
-                                console.log(`Lien alternatif trouvé: ${window.location.href}`);
-                                
-                                // Revenir à la page précédente
-                                window.history.back();
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-                            }
-                        }
-                        
-                        // Si pas de div cliquable, essayer de cliquer sur le h3 ou le lien principal
-                        if (!clickableDiv) {
-                            const h3Element = listing.querySelector('h3');
-                            const linkElement = listing.querySelector('a.bi-denomination.pj-link');
-                            
-                            if (h3Element) {
-                                h3Element.click();
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-                                
-                                if (window.location.href !== currentUrl && window.location.href.includes('/pros/')) {
-                                    links.push(window.location.href);
-                                    console.log(`Lien trouvé via h3: ${window.location.href}`);
-                                    window.history.back();
-                                    await new Promise(resolve => setTimeout(resolve, 1000));
-                                }
-                            } else if (linkElement) {
-                                linkElement.click();
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-                                
-                                if (window.location.href !== currentUrl && window.location.href.includes('/pros/')) {
-                                    links.push(window.location.href);
-                                    console.log(`Lien trouvé via lien principal: ${window.location.href}`);
-                                    window.history.back();
-                                    await new Promise(resolve => setTimeout(resolve, 1000));
-                                }
-                            }
-                        }
-                    }
-                    
-                    return links;
-                });
-                
-                // Ajouter les liens alternatifs aux liens valides
-                validDetailLinks.push(...alternativeLinks.filter(link => 
-                    !validDetailLinks.includes(link) && 
-                    link.includes('/pros/') && 
-                    link.match(/\/pros\/\d+/)
-                ));
-                
-                console.log(`Après méthode alternative: ${validDetailLinks.length} liens valides`);
-            }
             
-            // Si pas assez de liens valides, essayer de cliquer directement sur les éléments de la liste
-            if (validDetailLinks.length < detailLinks.length) {
-                console.log('Aucun lien trouvé, tentative de clic direct sur les éléments...');
-                
-                // Cliquer directement sur chaque élément de la liste
-                const businessListings = await page.$$('li.bi');
-                console.log(`Nombre d'éléments de liste trouvés: ${businessListings.length}`);
-                
-                for (let i = 0; i < businessListings.length; i++) {
-                    try {
-                        console.log(`Clic sur l'élément ${i + 1}/${businessListings.length}...`);
-                        
-                        // Cliquer sur l'élément
-                        await businessListings[i].click();
-                        await delay(2000, 4000);
-                        
-                        // Vérifier si nous sommes sur une page de détail
-                        const currentUrl = await page.url();
-                        if (currentUrl.includes('/pros/') && currentUrl.includes('detail')) {
-                            console.log(`Navigation réussie vers: ${currentUrl}`);
-                            
-                            // Récupérer les informations de l'entreprise
-                            const companyInfo = await page.evaluate(() => {
-                                const info = {
-                                    name: '',
-                                    address: '',
-                                    phone: '',
-                                    website: '',
-                                    email: '',
-                                    additionalInfo: ''
-                                };
-
-                                // Nom de l'entreprise
-                                const nameElement = document.querySelector('div.bi-content h3, h1');
-                                if (nameElement) {
-                                    info.name = nameElement.innerText.trim();
-                                }
-
-                                // Adresse
-                                const addressElement = document.querySelector('div.bi-content > div:nth-child(2)');
-                                if (addressElement) {
-                                    info.address = addressElement.innerText.trim().replace('Voir le plan', '').trim();
-                                }
-
-                                // Téléphone
-                                const phoneElement = document.querySelector('.coord-numero');
-                                if (phoneElement) {
-                                    info.phone = phoneElement.innerText.trim();
-                                }
-
-                                // Site web
-                                const websiteElement = document.querySelector('a[href*="http"]:not([href*="pagesjaunes"])');
-                                if (websiteElement) {
-                                    info.website = websiteElement.href;
-                                }
-
-                                // Email
-                                const emailElement = document.querySelector('a[href^="mailto:"]');
-                                if (emailElement) {
-                                    info.email = emailElement.href.replace('mailto:', '');
-                                }
-
-                                return info;
-                            });
-
-                            // Nettoyer les données pour éviter les problèmes de format CSV
-                            const cleanData = (text) => {
-                                if (!text) return '';
-                                return text
-                                    .replace(/\n/g, ' ') // Remplacer les retours à la ligne par des espaces
-                                    .replace(/\r/g, ' ') // Remplacer les retours chariot par des espaces
-                                    .replace(/\t/g, ' ') // Remplacer les tabulations par des espaces
-                                    .replace(/\s+/g, ' ') // Remplacer les espaces multiples par un seul espace
-                                    .trim(); // Supprimer les espaces en début et fin
-                            };
-
-                            // Ajouter les données
-                            allData.push({
-                                name: cleanData(companyInfo.name) || 'Nom non trouvé',
-                                address: cleanData(companyInfo.address) || 'Adresse non trouvée',
-                                phone: cleanData(companyInfo.phone) || 'Numéro non trouvé',
-                                website: cleanData(companyInfo.website) || 'Site web non trouvé',
-                                email: cleanData(companyInfo.email) || 'Email non trouvé',
-                                additionalInfo: cleanData(companyInfo.additionalInfo) || ''
-                            });
-
-                            console.log(`Entreprise traitée : ${companyInfo.name}`);
-                        }
-                        
-                        // Revenir à la page de résultats
-                        await page.goBack();
-                        await delay(1000, 2000);
-                        
-                    } catch (error) {
-                        console.error(`Erreur lors du clic sur l'élément ${i + 1}:`, error);
-                    }
-                }
-            }
             
-            // Traiter les entreprises dans l'ordre d'affichage seulement si nous avons des liens valides
+            
             if (validDetailLinks.length > 0) {
                 for (let i = 0; i < validDetailLinks.length; i++) {
                     const currentUrl = validDetailLinks[i];
@@ -710,48 +570,31 @@ export default async function Pages_jaunes(object, city, fileName) {
 
                     } catch (error) {
                         console.error(`Erreur lors du traitement de l'entreprise ${i + 1}:`, error);
+                    } finally {
+                        // Retourner à la page de résultats après chaque entreprise traitée
+                        console.log('Retour à la page de résultats...');
+                        await page.goBack();
+                        await delay(1000, 2000);
+                        
+                        // Vérifier que nous sommes bien sur la page de résultats avant de continuer
+                        try {
+                            await page.waitForSelector('li.bi, .bi-denomination', { visible: true, timeout: 15000 });
+                            console.log('Retour réussi à la page de résultats.');
+                        } catch (e) {
+                            console.log('Échec de la détection du retour à la page de résultats, tentative de navigation directe...');
+                            const resultsPageUrl = `https://www.pagesjaunes.fr/recherche?quoiqui=${encodeURIComponent(object)}&ou=${encodeURIComponent(city)}`;
+                            await page.goto(resultsPageUrl, { waitUntil: 'domcontentloaded' });
+                            await delay(1000, 2000);
+                            try {
+                                await page.waitForSelector('li.bi, .bi-denomination', { visible: true, timeout: 15000 });
+                                console.log('Retour réussi à la page de résultats via navigation directe.');
+                            } catch (err) {
+                                console.error('Erreur irrécupérable : impossible de revenir à la page de résultats.', err);
+                                hasNextPage = false;
+                                break;
+                            }
+                        }
                     }
-                }
-                
-                // Revenir à la page de résultats après avoir traité tous les liens
-                console.log('Retour à la page de résultats...');
-                
-                // Essayer d'abord de cliquer sur "Retour aux résultats" si disponible
-                const backToResults = await page.evaluate(() => {
-                    // Chercher le lien "Retour aux résultats"
-                    const links = Array.from(document.querySelectorAll('a'));
-                    const backLink = links.find(link => 
-                        link.textContent.includes('Retour aux résultats') ||
-                        link.textContent.includes('Retour') ||
-                        link.href.includes('recherche')
-                    );
-                    return backLink ? backLink.href : null;
-                });
-                
-                if (backToResults) {
-                    console.log('Clic sur "Retour aux résultats"...');
-                    await page.goto(backToResults, { waitUntil: 'domcontentloaded' });
-                    await delay(1000, 2000);
-                } else {
-                    // Si pas de lien "Retour aux résultats", naviguer directement
-                    const resultsPageUrl = `https://www.pagesjaunes.fr/recherche?quoiqui=${encodeURIComponent(object)}&ou=${encodeURIComponent(city)}`;
-                    console.log('Navigation directe vers la page de résultats...');
-                    await page.goto(resultsPageUrl, { waitUntil: 'domcontentloaded' });
-                    await delay(1000, 2000);
-                }
-                
-                // Vérifier que nous sommes bien sur la page de résultats
-                const isBackOnResultsPage = await page.evaluate(() => {
-                    return document.querySelector('.bi-list') !== null || 
-                           document.querySelector('li.bi') !== null ||
-                           window.location.href.includes('/recherche') ||
-                           window.location.href.includes('/chercherlespros');
-                });
-                
-                if (!isBackOnResultsPage) {
-                    console.log('Erreur lors du retour à la page de résultats');
-                } else {
-                    console.log('Retour réussi à la page de résultats');
                 }
             }
 
@@ -784,10 +627,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                 'a[data-page]',
                 'a[data-pagination]',
                 '.pagination .next',
-                '.pagination .suivant',
-                'a:contains("Suivant")',
-                'a:contains("Next")',
-                'a:contains(">")'
+                '.pagination .suivant'
             ];
             
             let nextPageButton = null;
@@ -866,7 +706,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                         }
                     } catch (err) {
                         console.error(`Erreur lors du clic sur le bouton "Suivant" : ${err.message}`);
-                        // Ne pas casser la boucle immédiatement, essayer une autre méthode ou tentative
+                        
                     }
                 }
 
@@ -895,90 +735,6 @@ export default async function Pages_jaunes(object, city, fileName) {
 
                 } else {
                     console.log('Impossible de cliquer sur le bouton "Suivant" après plusieurs tentatives. Fin du traitement.');
-                    hasNextPage = false;
-                }
-                            } else {
-                    console.log('Aucun bouton "Suivant" trouvé avec tous les sélecteurs testés.');
-                    
-                    // Analyser la structure de pagination pour détecter s'il y a d'autres pages
-                    const paginationInfo = await page.evaluate(() => {
-                        const paginationElements = document.querySelectorAll('.pagination a, .pagination li, a[href*="page"], a[href*="p="]');
-                        const paginationData = [];
-                        
-                        paginationElements.forEach(el => {
-                            const text = el.innerText.trim();
-                            const href = el.href;
-                            const classes = el.className;
-                            
-                            if (text && (text.match(/\d+/) || text.includes('Suivant') || text.includes('Next') || text.includes('>'))) {
-                                paginationData.push({
-                                    text: text,
-                                    href: href,
-                                    classes: classes
-                                });
-                            }
-                        });
-                        
-                        return paginationData;
-                    });
-                    
-                    console.log('Éléments de pagination trouvés:', paginationInfo);
-                    
-                    // Méthode alternative : essayer de détecter la pagination via l'URL
-                    const currentUrl = await page.url();
-                    console.log(`URL actuelle: ${currentUrl}`);
-                    
-                    // Essayer de construire l'URL de la page suivante
-                    let nextPageUrl = null;
-                    
-                    // Construire l'URL de recherche originale pour la pagination
-                    const searchUrl = `https://www.pagesjaunes.fr/recherche?quoiqui=${encodeURIComponent(object)}&ou=${encodeURIComponent(city)}`;
-                    
-                    if (currentUrl.includes('page=')) {
-                        const pageMatch = currentUrl.match(/page=(\d+)/);
-                        if (pageMatch) {
-                            const currentPage = parseInt(pageMatch[1]);
-                            nextPageUrl = searchUrl + `&page=${currentPage + 1}`;
-                            console.log(`Tentative de navigation vers la page suivante: ${nextPageUrl}`);
-                        }
-                    } else if (currentUrl.includes('p=')) {
-                        const pageMatch = currentUrl.match(/p=(\d+)/);
-                        if (pageMatch) {
-                            const currentPage = parseInt(pageMatch[1]);
-                            nextPageUrl = searchUrl + `&p=${currentPage + 1}`;
-                            console.log(`Tentative de navigation vers la page suivante: ${nextPageUrl}`);
-                        }
-                    } else {
-                        // Si pas de paramètre de page, ajouter page=2 à l'URL de recherche
-                        nextPageUrl = searchUrl + `&page=2`;
-                        console.log(`Tentative de navigation vers la page suivante: ${nextPageUrl}`);
-                    }
-                
-                if (nextPageUrl) {
-                    try {
-                        console.log('Tentative de navigation directe vers la page suivante...');
-                        await page.goto(nextPageUrl, { waitUntil: 'networkidle2' });
-                        await delay(1500, 2500);
-                        
-                        // Vérifier si nous avons de nouveaux résultats
-                        const newResults = await page.evaluate(() => {
-                            return document.querySelectorAll('li.bi').length;
-                        });
-                        
-                        if (newResults > 0) {
-                            console.log(`Navigation réussie vers la page suivante. ${newResults} nouveaux résultats trouvés.`);
-                            pageNbr++;
-                            hasNextPage = true;
-                        } else {
-                            console.log('Aucun nouveau résultat trouvé, fin du traitement.');
-                            hasNextPage = false;
-                        }
-                    } catch (error) {
-                        console.error('Erreur lors de la navigation vers la page suivante:', error);
-                        hasNextPage = false;
-                    }
-                } else {
-                    console.log('Impossible de construire l\'URL de la page suivante. Fin du traitement.');
                     hasNextPage = false;
                 }
             }
