@@ -1110,7 +1110,11 @@ export default async function Pages_jaunes(object, city, fileName) {
 
 
         console.log(`Données collectées et écrites dans le fichier ${fileName} avec succès.`);
-        console.log(`Total final d'entreprises traitées: ${totalProcessed}`);
+        if (totalResults > 0) {
+            console.log(`Progrès final: ${totalProcessed}/${totalResults} entreprises (${Math.round((totalProcessed/totalResults)*100)}%)`);
+        } else {
+            console.log(`Total final d'entreprises traitées: ${totalProcessed}`);
+        }
 
     } catch (error) {
         console.error('Erreur dans le processus :', error);
