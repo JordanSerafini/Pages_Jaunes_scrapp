@@ -163,24 +163,34 @@ export default async function Pages_jaunes(object, city, fileName) {
                 break;
             }
 
-            // Récupérer les liens vers les pages de détail
+            // Récupérer les liens vers les pages de détail dans l'ordre d'affichage
             const detailLinks = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a.bi-denomination.pj-link')).map(link => link.href);
-                // Supprimer les doublons
-                return [...new Set(links)];
+                // Garder l'ordre d'affichage, supprimer les doublons consécutifs
+                const uniqueLinks = [];
+                const seen = new Set();
+                
+                for (const link of links) {
+                    if (!seen.has(link)) {
+                        seen.add(link);
+                        uniqueLinks.push(link);
+                    }
+                }
+                
+                return uniqueLinks;
             });
 
             console.log(`Trouvé ${detailLinks.length} entreprises uniques à traiter sur cette page.`);
             
             // Afficher les premiers liens pour debug
             if (detailLinks.length > 0) {
-                console.log('Premiers liens trouvés:');
+                console.log('Premiers liens trouvés (dans l\'ordre d\'affichage):');
                 detailLinks.slice(0, 3).forEach((link, index) => {
                     console.log(`  ${index + 1}: ${link}`);
                 });
             }
 
-            // Traiter chaque entreprise individuellement
+            // Traiter chaque entreprise individuellement dans l'ordre d'affichage
             const processedUrls = new Set();
             
             // Filtrer les liens qui ne sont pas des pages de détail d'entreprise
@@ -191,6 +201,7 @@ export default async function Pages_jaunes(object, city, fileName) {
             
             console.log(`Liens valides trouvés: ${validDetailLinks.length}/${detailLinks.length}`);
             
+            // Traiter les entreprises dans l'ordre d'affichage
             for (let i = 0; i < validDetailLinks.length; i++) {
                 const currentUrl = validDetailLinks[i];
                 
@@ -451,6 +462,10 @@ export default async function Pages_jaunes(object, city, fileName) {
                     // Vérifier que la page a bien changé
                     const currentUrl = await page.url();
                     console.log(`URL actuelle après clic: ${currentUrl}`);
+                    
+                    // Attendre que les nouveaux résultats se chargent
+                    await page.waitForSelector('a.bi-denomination.pj-link h3', { visible: true, timeout: 10000 });
+                    console.log('Nouveaux résultats chargés.');
                     
                 } catch (err) {
                     console.error('Erreur lors du passage à la page suivante :', err);
