@@ -300,14 +300,14 @@ export default async function Pages_jaunes(object, city, fileName) {
     if (!fileName || fileName.trim() === '') {
         throw new Error('Le nom de fichier ne peut pas être vide');
     }
-    
+
     let pageNbr = 1;
     let totalProcessed = 0; // Compteur global d'entreprises traitées
-    
+
     // Set pour garder en mémoire les entreprises déjà traitées
     const processedCompanies = new Set();
     const processedUrls = new Set();
-    
+
     // let previousLinksHash = ''; // Variable pour détecter les boucles de pagination
     let totalResults = 0; // Déclarer totalResults ici, si ce n'est pas déjà fait
 
@@ -317,7 +317,7 @@ export default async function Pages_jaunes(object, city, fileName) {
         if (fs.existsSync(csvPath)) {
             const csvContent = fs.readFileSync(csvPath, 'utf8');
             const lines = csvContent.split('\n').filter(line => line.trim());
-            
+
             // Ignorer l'en-tête et charger les noms d'entreprises normalisés
             for (let i = 1; i < lines.length; i++) {
                 const columns = lines[i].split(',');
@@ -326,7 +326,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                     processedCompanies.add(normalizedName);
                 }
             }
-            
+
             console.log(`Chargement de ${processedCompanies.size} entreprises déjà traitées depuis le fichier existant.`);
         }
     } catch (error) {
@@ -419,7 +419,7 @@ export default async function Pages_jaunes(object, city, fileName) {
             console.log('Attente de la popup de cookies...');
 
             // Attendre que la page soit complètement chargée
-            await page.waitForFunction(() => document.readyState === 'complete', { timeout: 10000 }); // Timeout ajouté
+            await page.waitForFunction(() => document.readyState === 'complete', { timeout: 25000 }); // Timeout ajouté
 
             // Attendre un peu moins pour que les scripts se chargent
             await delay(100, 200); // Réduit de delayShort() à 100-200ms
@@ -466,7 +466,6 @@ export default async function Pages_jaunes(object, city, fileName) {
                 await delayShort();
             } else {
                 console.log('Aucun bouton cookie trouvé, continuation...');
-                return; // Sortir de la fonction si aucun bouton trouvé
             }
 
             // Le clic a déjà été effectué directement sur le bouton trouvé
@@ -536,12 +535,12 @@ export default async function Pages_jaunes(object, city, fileName) {
         while (hasNextPage) {
             // Attendre que les résultats se chargent avec les nouveaux sélecteurs
             try {
-                await page.waitForSelector('li.bi', { visible: true, timeout: 15000 }); // Réduit de 30s à 15s
+                await page.waitForSelector('li.bi', { visible: true, timeout: 25000 });
             } catch (error) {
                 try {
-                    await page.waitForSelector('.bi-denomination', { visible: true, timeout: 15000 }); // Réduit de 30s à 15s
+                    await page.waitForSelector('.bi-denomination', { visible: true, timeout: 25000 });
                 } catch (error2) {
-                    await page.waitForSelector('a[href*="/pros/"]', { visible: true, timeout: 15000 }); // Réduit de 30s à 15s
+                    await page.waitForSelector('a[href*="/pros/"]', { visible: true, timeout: 25000 });
                 }
             }
 
@@ -583,7 +582,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                     console.log('Aucun élément de nombre de résultats trouvé.');
                 }
             } catch (error) {
-                console.error("Erreur lors de l\'extraction du nombre de résultats :", error.message);
+                console.error(`Erreur lors de l'extraction du nombre de résultats :`, error.message);
             }
 
             // Vérifier que nous sommes bien sur une page de résultats
@@ -706,7 +705,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                 const isValidProsLink = (link.includes('/pros/') &&
                                        !link.includes('chercherlespros') &&
                                        !link.includes('recherche') &&
-                                       (link.match(/\/pros\/\d+/) || link.includes('code_etablissement='))); // Accepte les liens avec code_etablissement
+                                       (link.match(/\\/pros\\/\\d+/) || link.includes('code_etablissement='))); // Accepte les liens avec code_etablissement
 
                 if (!isValidProsLink) {
                     console.log(`Lien filtré: ${link}`);
@@ -720,15 +719,18 @@ export default async function Pages_jaunes(object, city, fileName) {
             // Traiter les entreprises en ouvrant des onglets depuis la page de liste
             for (let i = 0; i < validDetailLinks.length; i += poolSize) {
                 const batch = validDetailLinks.slice(i, i + poolSize);
+
                 const batchResultsPromises = batch.map(async (link) => {
                     // Vérifier si cette URL a déjà été traitée
                     if (processedUrls.has(link)) {
+
                         console.log(`URL déjà traitée, passage à la suivante: ${link}`);
                         return null;
                     }
 
                     let newPage = null; // Déclarer et initialiser ici
                     try {
+
                         newPage = await browser.newPage(); // Assigner ici
 
                         // Naviguer vers la page de détail
@@ -740,7 +742,7 @@ export default async function Pages_jaunes(object, city, fileName) {
 
                         // Vérifier que la page est bien chargée avant d'extraire
                         try {
-                            await newPage.waitForSelector('div.bi-content, h1, .bi-denomination', { timeout: 5000 });
+                            await newPage.waitForSelector('div.bi-content, h1, .bi-denomination', { timeout: 25000 });
                         } catch (error) {
                             console.log('Page de détail pas complètement chargée, tentative d\'extraction...');
                         }
@@ -779,7 +781,14 @@ export default async function Pages_jaunes(object, city, fileName) {
                 const batchResults = await Promise.all(batchResultsPromises);
                 const validResults = batchResults.filter(Boolean);
                 allData.push(...validResults);
-                totalProcessed += validResults.length;
+
+                // Écrire les données par petits lots pour éviter la perte de données
+                if (allData.length >= 10) {
+                    const batchToWrite = allData.splice(0, allData.length);
+                    await csvWriter.writeRecords(batchToWrite);
+                    console.log(`Écriture de ${batchToWrite.length} enregistrements dans le CSV (batch).`);
+                    totalProcessed += validResults.length; // Déplacer ici l'incrémentation
+                }
 
                 // Afficher le progrès avec le total si disponible
                 if (typeof totalResults === 'number' && totalResults > 0) {
@@ -787,497 +796,55 @@ export default async function Pages_jaunes(object, city, fileName) {
                 } else {
                     console.log(`Total traité jusqu'ici: ${totalProcessed} entreprises`);
                 }
-
-                        // Détection de boucle de pagination - Modifié pour utiliser le numéro de page
-                        const currentUrlParams = new URLSearchParams(page.url().split('?')[1] || '');
-                        const currentPageNum = parseInt(currentUrlParams.get('page') || '1');
-                        
-                        // Si la page actuelle est la même que la page précédente et que ce n'est pas la première page
-                        // On considère qu'on est bloqué si on est sur la même page mais qu'on a tenté de naviguer
-                        if (currentPageNum === pageNbr && pageNbr > 1) { // Vérifier si on est resté sur la même page après une tentative de navigation
-                            console.warn(`❌ Page ${pageNbr} identique à la précédente malgré la tentative de navigation. Pagination bloquée ou figée.`);
-                            await page.screenshot({ path: `./debug_page_${pageNbr}.png`, fullPage: true });
-                            fs.writeFileSync(`./debug_page_${pageNbr}.html`, await page.content());
-
-                            console.log('Tentative de débloquer la pagination: rechargement et nouvelle recherche...');
-                            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-                            await delay(1000, 2000);
-
-                            // Recharger la page actuelle pour tenter de débloquer
-                            await page.reload({ waitUntil: 'domcontentloaded' });
-                            await delay(1000, 2000); // Délai après rechargement
-
-                            // Re-entrer les critères de recherche
-                            await page.type('#ou', city);
-                            await delayShort();
-                            await page.type('#quoiqui', object);
-                            await delayShort();
-                            await page.click('#findId');
-                            console.log('Recherche soumise à nouveau après déblocage...');
-                            await delayPageChange();
-
-                            // Ne pas incrémenter pageNbr ici, on est toujours sur la même page logique (après tentative de déblocage)
-                            continue; 
-                        }
-                        
-                        // previousLinksHash = currentLinksHash; // Plus nécessaire
-
-                        // Écrire les données par petits lots pour éviter la perte de données
-                if (allData.length >= 10) {
-                    const batchToWrite = allData.splice(0, allData.length);
-                    await csvWriter.writeRecords(batchToWrite);
-                    console.log(`Écriture de ${batchToWrite.length} enregistrements dans le CSV (batch).`);
-                }
             }
 
-            // Nous sommes toujours sur la page de liste, pas besoin de retour
-            console.log('Page de liste des résultats préservée.');
+            // === ⏭️ Tentative de passer à la page suivante ===
 
-            // Ancien bloc de traitement des détails - SUPPRIMÉ
-            /*
-            if (validDetailLinks.length > 0) {
-                for (let i = 0; i < validDetailLinks.length; i++) {
-                    const currentUrl = validDetailLinks[i];
+            // 1. Capture des premiers éléments de la liste actuelle pour vérifier le changement
+            const previousLinks = await page.$$eval('li.bi', els =>
+              els.slice(0,3).map(e => e.textContent.trim())
+            );
 
-                    // Vérifier si cette URL a déjà été traitée
-                    if (processedUrls.has(currentUrl)) {
-                        console.log(`URL déjà traitée, passage à la suivante: ${currentUrl}`);
-                        continue;
-                    }
+            // 2. Sélection du bouton "Suivant"
+            const nextBtn =
+              await page.$('#pagination-next')              ||
+              await page.$('a[rel="next"]');
 
-                    processedUrls.add(currentUrl);
-
-                    try {
-                        console.log(`Traitement de l'entreprise ${i + 1}/${detailLinks.length}...`);
-                        console.log(`URL: ${currentUrl}`);
-
-                        // Aller sur la page de détail
-                        await page.goto(currentUrl, { waitUntil: 'domcontentloaded' });
-                        await delayPageChange();
-
-                        // Vérifier que nous sommes bien sur une page de détail d'entreprise
-                        const isDetailPage = await page.evaluate(() => {
-                            return window.location.href.includes('/pros/detail') ||
-                                   document.querySelector('.bi-denomination, .denomination, h1');
-                        });
-
-                        if (!isDetailPage) {
-                            console.log(`Page ${i + 1} n'est pas une page de détail d'entreprise, passage à la suivante...`);
-                            continue;
-                        }
-
-                        // Récupérer les informations de l'entreprise avec les sélecteurs précis
-                        const companyInfo = await page.evaluate(() => {
-                            const info = {
-                                name: '',
-                                address: '',
-                                phone: '',
-                                website: '',
-                                email: '',
-                                additionalInfo: ''
-                            };
-
-                            // Nom de l'entreprise - utiliser le sélecteur précis
-                            const nameElement = document.querySelector('div.bi-content h3');
-                            if (nameElement) {
-                                const name = nameElement.innerText.trim();
-                                if (name &&
-                                    !name.includes('à') &&
-                                    !name.includes('Bâtiment') &&
-                                    !name.includes('PagesJaunes') &&
-                                    name.length > 3 &&
-                                    name.length < 100) {
-                                    info.name = name;
-                                    console.log(`Nom trouvé: ${name}`);
-                                }
-                            }
-
-                            // Si toujours pas de nom trouvé, essayer de le récupérer depuis l'URL
-                            if (!info.name) {
-                                const url = window.location.href;
-                                const match = url.match(/detail\?.*?=([^&]+)/);
-                                if (match) {
-                                    info.name = decodeURIComponent(match[1]).replace(/\+/g, ' ');
-                                }
-                            }
-
-                            // Dernière tentative : chercher dans le titre de la page
-                            if (!info.name || info.name.includes('à')) {
-                                const title = document.title;
-                                if (title && !title.includes('PagesJaunes')) {
-                                    info.name = title.replace(' - PagesJaunes', '').replace(' | PagesJaunes', '');
-                                }
-                            }
-
-                            // Adresse - utiliser le sélecteur précis
-                            const addressElement = document.querySelector('div.bi-content > div:nth-child(2)');
-                            if (addressElement) {
-                                let addressText = addressElement.innerText.trim();
-                                addressText = addressText.replace('Voir le plan', '').trim();
-                                if (addressText && addressText.length > 5) {
-                                    info.address = addressText;
-                                    console.log(`Adresse trouvée: ${addressText}`);
-                                }
-                            }
-
-                            // Si pas d'adresse trouvée, essayer le lien "Voir le plan"
-                            if (!info.address) {
-                                const planLink = document.querySelector('a[href*="voir-le-plan"]');
-                                if (planLink) {
-                                    const addressText = planLink.innerText.trim();
-                                    if (addressText && addressText.length > 5) {
-                                        info.address = addressText;
-                                        console.log(`Adresse trouvée via lien plan: ${addressText}`);
-                                    }f
-                                }
-                            }
-
-                            // Numéros de téléphone - utiliser le sélecteur précis pour le bouton
-                            const phoneNumbers = [];
-
-                            // Chercher les numéros déjà affichés
-                            const phoneSelectors = [
-                                '.coord-numero',
-                                '.number-contact span',
-                                '.bi-ctas .btn_tel + span',
-                                'span[aria-label*="numéro"]',
-                                '.contact-info span',
-                                '.phone-number',
-                                '.coord-liste-numero span'
-                            ];
-
-                            for (const selector of phoneSelectors) {
-                                const elements = document.querySelectorAll(selector);
-                                elements.forEach(el => {
-                                    const text = el.innerText.trim();
-                                    if (/^(0[1-9])(\d{8})$/.test(text.replace(/\s/g, ''))) {
-                                        phoneNumbers.push(text);
-                                    }
-                                });
-                            }
-
-                            // Si pas de numéros trouvés, cliquer sur le bouton "Afficher le N°" avec le sélecteur précis
-                            if (phoneNumbers.length === 0) {
-                                const showNumberBtn = document.querySelector('button[aria-label*="Afficher le N°"]');
-                                if (showNumberBtn) {
-                                    showNumberBtn.click();
-                                    console.log('Bouton "Afficher le N°" cliqué');
-
-                                    // Attendre un peu et chercher à nouveau
-                                    setTimeout(() => {
-                                        const newPhoneElements = document.querySelectorAll('.coord-numero');
-                                        newPhoneElements.forEach(el => {
-                                            const text = el.innerText.trim();
-                                            if (/^(0[1-9])(\d{8})$/.test(text.replace(/\s/g, ''))) {
-                                                phoneNumbers.push(text);
-                                            }
-                                        });
-                                    }, 2000);
-                                }
-                            }
-
-                            info.phone = phoneNumbers.join('; ');
-
-                            // Site web - utiliser les sélecteurs précis basés sur la structure HTML
-                            const websiteSelectors = [
-                                'a.MINISITE.pj-link',
-                                'a[class*="MINISITE"]',
-                                'a[href*="http"]:not([href*="pagesjaunes"]):not([href*="solocal"]):not([href*="audit-digital"])',
-                                'a.SITE_EXTERNE',
-                                'a[href^="http"]:not([href*="pagesjaunes"]):not([href*="solocal"])'
-                            ];
-
-                            let websiteFound = false;
-                            for (const selector of websiteSelectors) {
-                                const websiteElements = document.querySelectorAll(selector);
-                                for (const element of websiteElements) {
-                                    const href = element.href;
-                                    const text = element.innerText.trim();
-
-                                    // Vérifier que ce n'est pas un lien PagesJaunes ou Solocal
-                                    if (href &&
-                                        !href.includes('pagesjaunes') &&
-                                        !href.includes('solocal.com') &&
-                                        !href.includes('audit-digital') &&
-                                        !href.includes('pjstats') &&
-                                        (href.includes('www') || href.includes('http')))
-                                    {
-
-                                        info.website = href;
-                                        console.log(`Site web trouvé avec sélecteur "${selector}": ${href}`);
-                                        websiteFound = true;
-                                        break;
-                                    }
-
-                                    // Si le href n'est pas bon, essayer le texte
-                                    if (text &&
-                                        !text.includes('pagesjaunes') &&
-                                        !text.includes('solocal.com') &&
-                                        !text.includes('audit-digital') &&
-                                        (text.includes('www') || text.includes('http')))
-                                    {
-
-                                        info.website = text;
-                                        console.log(`Site web trouvé via texte avec sélecteur "${selector}": ${text}`);
-                                        websiteFound = true;
-                                        break;
-                                    }
-                                }
-                                if (websiteFound) break;
-                            }
-
-                            // Fallback: chercher dans les spans avec la classe "value"
-                            if (!info.website) {
-                                const valueSpans = document.querySelectorAll('span.value');
-                                for (const span of valueSpans) {
-                                    const text = span.innerText.trim();
-                                    if (text &&
-                                        !text.includes('pagesjaunes') &&
-                                        !text.includes('solocal.com') &&
-                                        !text.includes('audit-digital') &&
-                                        (text.includes('www') || text.includes('http')))
-                                    {
-
-                                        info.website = text;
-                                        console.log(`Site web trouvé via span.value: ${text}`);
-                                        break;
-                                    }
-                                }
-                            }
-
-                            // Email
-                            const emailElement = document.querySelector('a[href^="mailto:"], .email');
-                            if (emailElement) {
-                                const email = emailElement.href.replace('mailto:', '') || emailElement.innerText.trim();
-                                if (email.includes('@')) {
-                                    info.email = email;
-                                }
-                            }
-
-                            // Informations supplémentaires - utiliser le sélecteur précis
-                            const additionalInfo = [];
-
-                            // Description de l'entreprise
-                            const descElement = document.querySelector('.bi-desc');
-                            if (descElement) {
-                                const text = descElement.innerText.trim();
-                                if (text) {
-                                    additionalInfo.push(`Description: ${text}`);
-                                }
-                            }
-
-                            // Type d'activité
-                            const activityElement = document.querySelector('.bi-activity-unit-small');
-                            if (activityElement) {
-                                const text = activityElement.innerText.trim();
-                                if (text) {
-                                    additionalInfo.push(`Activité: ${text}`);
-                                }
-                            }
-
-                            // Avis et étoiles
-                            const starsElement = document.querySelector('.bi-stars .rating');
-                            const avisElement = document.querySelector('.bi-stars .nbAvis');
-                            if (starsElement || avisElement) {
-                                const stars = starsElement ? starsElement.innerText.trim() : '';
-                                const avis = avisElement ? avisElement.innerText.trim() : '';
-                                if (stars || avis) {
-                                    additionalInfo.push(`Avis: ${stars} ${avis}`);
-                                }
-                            }
-
-                            info.additionalInfo = additionalInfo.join(' | ');
-
-                            return info;
-                        });
-
-                        // Nettoyer les données pour éviter les problèmes de format CSV
-                        const cleanData = (text) => {
-                            if (!text) return '';
-                            return text
-                                .replace(/\n/g, ' ') // Remplacer les retours à la ligne par des espaces
-                                .replace(/\r/g, ' ') // Remplacer les retours chariot par des espaces
-                                .replace(/\t/g, ' ') // Remplacer les tabulations par des espaces
-                                .replace(/\s+/g, ' ') // Remplacer les espaces multiples par un seul espace
-                                .trim(); // Supprimer les espaces en début et fin
-                        };
-
-                        // Ajouter les données à la liste
-                        allData.push({
-                            name: cleanData(companyInfo.name) || 'Nom non trouvé',
-                            address: cleanData(companyInfo.address) || 'Adresse non trouvée',
-                            phone: cleanData(companyInfo.phone) || 'Numéro non trouvé',
-                            website: cleanData(companyInfo.website) || 'Site web non trouvé',
-                            email: cleanData(companyInfo.email) || 'Email non trouvé',
-                            additionalInfo: cleanData(companyInfo.additionalInfo) || ''
-                        });
-
-                        console.log(`Entreprise traitée : ${companyInfo.name}`);
-                        console.log(`  - Adresse: ${companyInfo.address}`);
-                        console.log(`  - Téléphone: ${companyInfo.phone}`);
-                        console.log(`  - Site web: ${companyInfo.website}`);
-                        console.log(`  - Email: ${companyInfo.email}`);
-
-                    } catch (error) {
-                        console.error(`Erreur lors du traitement de l'entreprise ${i + 1}:`, error);
-                    } finally {
-                        // Retourner à la page de résultats après chaque entreprise traitée
-                        console.log('Retour à la page de résultats...');
-                        await page.goBack();
-                        await delayPageChange();
-
-                        // Vérifier que nous sommes bien sur la page de résultats avant de continuer
-                        try {
-                            await page.waitForSelector('li.bi, .bi-denomination', { visible: true, timeout: 15000 });
-                            console.log('Retour réussi à la page de résultats.');
-                        } catch (e) {
-                            console.log('Échec de la détection du retour à la page de résultats, tentative de navigation directe...');
-                            const resultsPageUrl = `https://www.pagesjaunes.fr/recherche?quoiqui=${encodeURIComponent(object)}&ou=${encodeURIComponent(city)}`;
-                            await page.goto(resultsPageUrl, { waitUntil: 'domcontentloaded' });
-                            await delayPageChange();
-                            try {
-                                await page.waitForSelector('li.bi, .bi-denomination', { visible: true, timeout: 15000 });
-                                console.log('Retour réussi à la page de résultats via navigation directe.');
-                            } catch (err) {
-                                console.error('Erreur irrécupérable : impossible de revenir à la page de résultats.', err);
-                                hasNextPage = false;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            */
-
-            // Écrire les données par petits lots pour éviter la perte de données
-            if (allData.length > 0) { // Condition modifiée pour écrire toutes les données restantes après les lots
-                await csvWriter.writeRecords(allData);
-                console.log('Écriture des derniers enregistrements dans le CSV.');
-                allData.length = 0; // Vider le tableau après écriture
-            }
-
-            // Vérifier s'il y a une page suivante avec plusieurs sélecteurs
-            console.log('Recherche du bouton "Suivant"...');
-
-            // Essayer plusieurs sélecteurs pour le bouton "Suivant"
-            const nextPageSelectors = [
-                '#pagination-next',
-                'a[aria-label*="Suivant"]',
-                'a[aria-label*="Next"]',
-                'a[title*="Suivant"]',
-                'a[title*="Next"]',
-                'button[aria-label*="Suivant"]',
-                'button[aria-label*="Next"]',
-                '.pagination a:last-child',
-                '.pagination-next',
-                'a[href*="page="]',
-                'a[href*="p="]',
-                'a[href*="suivant"]',
-                'a[href*="next"]',
-                '.pagination a[href*="2"]',
-                '.pagination a[href*="3"]',
-                'a[data-page]',
-                'a[data-pagination]',
-                '.pagination .next',
-                '.pagination .suivant'
-            ];
-
-            let nextPageButton = null;
-            let nextButtonText = '';
-
-            for (const selector of nextPageSelectors) {
-                try {
-                    const button = await page.$(selector);
-                    if (button) {
-                        const isVisible = await button.isVisible();
-                        if (isVisible) {
-                            nextButtonText = await page.evaluate(el => el.innerText || el.textContent || '', button);
-                            console.log(`Bouton trouvé avec le sélecteur "${selector}", texte: "${nextButtonText}"`);
-
-                            // Vérifier si le bouton contient "Suivant" ou "Next" ou si c'est le dernier lien de pagination
-                            if (nextButtonText.includes('Suivant') ||
-                                nextButtonText.includes('Next') ||
-                                nextButtonText.includes('>') ||
-                                selector.includes('last-child') ||
-                                selector.includes('pagination-next')) {
-                                nextPageButton = button;
-                                break;
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.log(`Sélecteur "${selector}" non trouvé ou erreur`);
-                }
-            }
-
-            if (nextPageButton) {
-                console.log(`Bouton "Suivant" trouvé, texte: ${nextButtonText}`);
-
-                try {
-                    console.log('Clic sur le bouton "Suivant"...');
-
-                    // Attendre que le bouton soit vraiment cliquable
-                    await page.waitForFunction(() => {
-                        const button = document.querySelector('#pagination-next');
-                        return button && !button.disabled && button.offsetParent !== null;
-                    }, { timeout: 10000 });
-
-                    // Utiliser une méthode de clic plus robuste
-                    try {
-                        await page.evaluate(() => {
-                            const button = document.querySelector('#pagination-next');
-                            if (button) {
-                                button.click();
-                            }
-                        });
-                    } catch (error) {
-                        console.log('Clic échoué, tentative de navigation directe...');
-                        // Si le clic échoue, essayer de naviguer directement vers la page suivante
-                        const currentUrl = page.url();
-                        const urlParams = new URLSearchParams(currentUrl.split('?')[1] || '');
-                        const currentPage = parseInt(urlParams.get('page') || '1');
-                        const nextPage = currentPage + 1;
-
-                        const nextPageUrl = `${currentUrl.split('?')[0]}?${urlParams.toString().replace(/page=\d+/, `page=${nextPage}`)}`;
-                        await page.goto(nextPageUrl, { waitUntil: 'domcontentloaded' });
-                    }
-
-                    await delayPageChange();
-
-                    pageNbr++; // Incrémenter le numéro de page APRÈS la navigation réussie
-                    console.log(`Passage à la page suivante... ${pageNbr}`);
-
-                    // Attendre que les nouveaux résultats se chargent
-                    await page.waitForSelector('li.bi', { visible: true, timeout: 10000 }); // Réduit de 15s à 10s
-                    console.log('Nouveaux résultats chargés.');
-
-                    // Vérifier que nous sommes bien sur une nouvelle page
-                    let newPageNumberInfo = null;
-                    try {
-                        newPageNumberInfo = await page.evaluate(() => {
-                            const pageInfo = document.querySelector('.pagination-info');
-                            if (pageInfo) {
-                                return pageInfo.textContent;
-                            }
-                            return null;
-                        });
-                    } catch (error) {
-                        console.log('Erreur lors de la vérification du numéro de page');
-                    }
-
-                    if (newPageNumberInfo) {
-                        console.log(`Page actuelle affichée: ${newPageNumberInfo}`);
-                    } else {
-                        console.log('Numéro de page non trouvé après navigation.');
-                    }
-
-                } catch (err) {
-                    console.error(`Erreur lors du clic sur le bouton "Suivant" : ${err.message}`);
-                    hasNextPage = false;
-                }
+            if (!nextBtn) {
+              console.log('⛔ Pas de bouton suivant → fin.');
+              hasNextPage = false;
             } else {
-                console.log('Aucun bouton "Suivant" visible trouvé. Fin du traitement.');
-                hasNextPage = false;
+              // 3. Clic réel sur le bouton + surveillance du changement de contenu
+              try {
+                await Promise.all([
+
+                  nextBtn.click(),
+                  page.waitForFunction(
+                    (prev) => {
+                      const cur = [...document.querySelectorAll('li.bi')]
+
+                                  .slice(0,3).map(e => e.textContent.trim());
+                      return JSON.stringify(cur) !== JSON.stringify(prev);
+                    },
+
+                    {timeout: 25000}, // Augmenter le timeout pour la stabilité
+                    previousLinks
+                  ),
+                  page.waitForTimeout(500 + Math.random() * 800) // Petit delay random anti-bot
+                ]);
+
+                // 4. Récupérer et afficher le numéro de page courant (si disponible)
+                const currentPage = await page.$eval('.pagination .pagination_compteur', el =>
+                  el.textContent.trim()
+                );
+                console.log(`✅ Passage à la ${currentPage}`);
+                pageNbr++; // Incrémenter pageNbr après une navigation réussie
+              } catch (err) {
+                console.warn('⚠️ Pagination échouée ou identique. Tentative de rechargement...');
+                await page.reload({ waitUntil: 'domcontentloaded' });
+                await page.waitForTimeout(2000);
+                continue; // relance la boucle de scraping
+              }
             }
         }
 
