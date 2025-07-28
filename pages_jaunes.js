@@ -148,7 +148,19 @@ export default async function Pages_jaunes(object, city, fileName) {
         let hasNextPage = true;
 
         while (hasNextPage) {
-            await page.waitForSelector('a.bi-denomination.pj-link h3', { visible: true, timeout: 150000 });
+            // Attendre que les résultats se chargent avec plusieurs sélecteurs possibles
+            try {
+                await page.waitForSelector('a.bi-denomination.pj-link h3', { visible: true, timeout: 150000 });
+            } catch (error) {
+                try {
+                    await page.waitForSelector('.bi-denomination', { visible: true, timeout: 150000 });
+                } catch (error2) {
+                    await page.waitForSelector('a[href*="/pros/"]', { visible: true, timeout: 150000 });
+                }
+            }
+            
+            // Attendre un peu plus pour s'assurer que tous les éléments sont chargés
+            await delay(2000, 4000);
             console.log('Résultats de recherche chargés.');
 
             // Vérifier que nous sommes bien sur une page de résultats
@@ -163,10 +175,60 @@ export default async function Pages_jaunes(object, city, fileName) {
                 break;
             }
 
-            // Récupérer les liens vers les pages de détail dans l'ordre d'affichage
+            // Récupérer les liens vers les pages de détail en utilisant les sélecteurs précis
             const detailLinks = await page.evaluate(() => {
-                const links = Array.from(document.querySelectorAll('a.bi-denomination.pj-link')).map(link => link.href);
-                // Garder l'ordre d'affichage, supprimer les doublons consécutifs
+                // Utiliser le sélecteur précis pour les blocs d'entreprises
+                const businessListings = document.querySelectorAll('section#listResults ul > li.bi-generic.bi-propay');
+                console.log(`Nombre de listings d'entreprises trouvés: ${businessListings.length}`);
+                
+                const links = [];
+                
+                businessListings.forEach((listing, index) => {
+                    // Chercher le lien principal dans chaque listing
+                    let mainLink = null;
+                    
+                    // Essayer plusieurs sélecteurs pour trouver le lien principal
+                    const linkSelectors = [
+                        'a.bi-denomination.pj-link',
+                        '.bi-clic-mobile a[href*="/pros/"]',
+                        '.bi-content a[href*="/pros/"]',
+                        'a[href*="/pros/"]',
+                        '.bi-denomination a',
+                        '.bi-header-title a'
+                    ];
+                    
+                    for (const selector of linkSelectors) {
+                        const linkElement = listing.querySelector(selector);
+                        if (linkElement && linkElement.href && linkElement.href.includes('/pros/')) {
+                            mainLink = linkElement.href;
+                            console.log(`Lien trouvé pour listing ${index + 1} avec sélecteur ${selector}: ${mainLink}`);
+                            break;
+                        }
+                    }
+                    
+                    // Si aucun lien trouvé avec les sélecteurs, essayer de cliquer sur le div bi-clic-mobile
+                    if (!mainLink) {
+                        const clickableDiv = listing.querySelector('.bi-clic-mobile');
+                        if (clickableDiv) {
+                            // Simuler un clic pour voir si cela génère un lien
+                            clickableDiv.click();
+                            // Attendre un peu et vérifier si l'URL a changé
+                            setTimeout(() => {
+                                if (window.location.href.includes('/pros/')) {
+                                    mainLink = window.location.href;
+                                }
+                            }, 100);
+                        }
+                    }
+                    
+                    if (mainLink) {
+                        links.push(mainLink);
+                    } else {
+                        console.log(`Aucun lien trouvé pour le listing ${index + 1}`);
+                    }
+                });
+                
+                // Supprimer les doublons
                 const uniqueLinks = [];
                 const seen = new Set();
                 
@@ -177,6 +239,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                     }
                 }
                 
+                console.log(`Liens uniques trouvés: ${uniqueLinks.length}`);
                 return uniqueLinks;
             });
 
@@ -194,12 +257,70 @@ export default async function Pages_jaunes(object, city, fileName) {
             const processedUrls = new Set();
             
             // Filtrer les liens qui ne sont pas des pages de détail d'entreprise
-            const validDetailLinks = detailLinks.filter(link => 
-                link.includes('/pros/') && 
-                !link.includes('chercherlespros')
-            );
+            const validDetailLinks = detailLinks.filter(link => {
+                // Vérifier que c'est un lien vers une page de détail d'entreprise
+                const isValidProsLink = link.includes('/pros/') && 
+                                      !link.includes('chercherlespros') &&
+                                      !link.includes('recherche') &&
+                                      link.match(/\/pros\/\d+/); // Doit contenir un ID numérique
+                
+                if (!isValidProsLink) {
+                    console.log(`Lien filtré: ${link}`);
+                }
+                
+                return isValidProsLink;
+            });
             
             console.log(`Liens valides trouvés: ${validDetailLinks.length}/${detailLinks.length}`);
+            
+            // Si nous n'avons pas assez de liens, essayer une méthode alternative
+            if (validDetailLinks.length < 10) {
+                console.log('Peu de liens trouvés, tentative de méthode alternative...');
+                
+                // Méthode alternative : cliquer directement sur chaque listing
+                const alternativeLinks = await page.evaluate(async () => {
+                    const businessListings = document.querySelectorAll('li.bi');
+                    const links = [];
+                    
+                    for (let i = 0; i < businessListings.length; i++) {
+                        const listing = businessListings[i];
+                        
+                        // Essayer de cliquer sur le div cliquable
+                        const clickableDiv = listing.querySelector('.bi-clic-mobile');
+                        if (clickableDiv) {
+                            // Sauvegarder l'URL actuelle
+                            const currentUrl = window.location.href;
+                            
+                            // Cliquer sur le div
+                            clickableDiv.click();
+                            
+                            // Attendre un peu pour que la navigation se fasse
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            
+                            // Vérifier si l'URL a changé
+                            if (window.location.href !== currentUrl && window.location.href.includes('/pros/')) {
+                                links.push(window.location.href);
+                                console.log(`Lien alternatif trouvé: ${window.location.href}`);
+                                
+                                // Revenir à la page précédente
+                                window.history.back();
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                            }
+                        }
+                    }
+                    
+                    return links;
+                });
+                
+                // Ajouter les liens alternatifs aux liens valides
+                validDetailLinks.push(...alternativeLinks.filter(link => 
+                    !validDetailLinks.includes(link) && 
+                    link.includes('/pros/') && 
+                    link.match(/\/pros\/\d+/)
+                ));
+                
+                console.log(`Après méthode alternative: ${validDetailLinks.length} liens valides`);
+            }
             
             // Traiter les entreprises dans l'ordre d'affichage
             for (let i = 0; i < validDetailLinks.length; i++) {
@@ -370,12 +491,17 @@ export default async function Pages_jaunes(object, city, fileName) {
                             const text = websiteElement.innerText.trim();
                             if (text && text.includes('www')) {
                                 info.website = text;
-                                console.log(`Site web trouvé: ${text}`);
+                                console.log(`[DEBUG Site Web] Site web trouvé via a.SITE_EXTERNE span.value: ${text}`);
+                            } else {
+                                console.log(`[DEBUG Site Web] a.SITE_EXTERNE span.value trouvé mais contenu invalide: '${text}'`);
                             }
+                        } else {
+                            console.log('[DEBUG Site Web] a.SITE_EXTERNE span.value non trouvé.');
                         }
 
                         // Fallback: chercher des liens génériques (moins précis)
                         if (!info.website) {
+                            console.log('[DEBUG Site Web] Tentative de fallback pour le site web...');
                             const genericWebsiteSelectors = [
                                 'a[href*="http"]',
                                 '.website-link'
@@ -386,9 +512,11 @@ export default async function Pages_jaunes(object, city, fileName) {
                                     const href = genericWebsiteElement.href || genericWebsiteElement.innerText.trim();
                                     if (href && href.includes('www')) {
                                         info.website = href;
-                                        console.log(`Site web trouvé (générique): ${href}`);
+                                        console.log(`[DEBUG Site Web] Site web trouvé via fallback ${selector}: ${href}`);
                                         break;
                                     }
+                                } else {
+                                    console.log(`[DEBUG Site Web] Fallback sélecteur ${selector} non trouvé.`);
                                 }
                             }
                         }
