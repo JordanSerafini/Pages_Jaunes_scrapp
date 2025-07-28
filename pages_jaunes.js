@@ -31,43 +31,38 @@ export default async function Pages_jaunes(object, city, fileName) {
     });
 
     const browser = await puppeteer.launch({ headless: false });
+    
     try {
         const page = await browser.newPage();
 
-        
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36');
         console.log('Accès à la page de PagesJaunes...');
         await page.goto('https://www.pagesjaunes.fr/', { waitUntil: 'networkidle2' });
 
-        // Gestion des cookies avec plusieurs sélecteurs possibles
+        // Gestion des cookies
         console.log('Tentative de gestion des cookies...');
         try {
-            // Attendre que l'iframe de cookies apparaisse
             await page.waitForSelector('iframe', { visible: true, timeout: 10000 });
             
-            // Trouver l'iframe contenant la popup de cookies
             const frames = page.frames();
             const cookieFrame = frames.find(frame => 
                 frame.url().includes('didomi') || 
                 frame.url().includes('cookie') ||
                 frame.url().includes('consent')
-            ) || frames[1]; // Souvent le deuxième frame
+            ) || frames[1];
             
             if (cookieFrame) {
                 console.log('Frame de cookies trouvé, tentative de clic...');
                 
-                // Attendre que le bouton soit visible dans l'iframe
                 await cookieFrame.waitForSelector('button.button_acceptAll, button[aria-label="Accepter la collecte de vos données"]', { 
                     visible: true, 
                     timeout: 5000 
                 });
                 
-                // Essayer plusieurs sélecteurs pour le bouton d'acceptation
                 const cookieSelectors = [
                     'button.button_acceptAll',
                     'button[aria-label="Accepter la collecte de vos données"]',
-                    'button[aria-label*="Accepter"]',
-                    'button:contains("Accepter")'
+                    'button[aria-label*="Accepter"]'
                 ];
                 
                 let cookieClicked = false;
@@ -86,7 +81,6 @@ export default async function Pages_jaunes(object, city, fileName) {
                 }
                 
                 if (!cookieClicked) {
-                    // Essayer de cliquer sur le bouton "Accepter" par texte dans l'iframe
                     await cookieFrame.evaluate(() => {
                         const buttons = Array.from(document.querySelectorAll('button'));
                         const acceptButton = buttons.find(btn => 
@@ -100,37 +94,10 @@ export default async function Pages_jaunes(object, city, fileName) {
                         return false;
                     });
                 }
-            } else {
-                console.log('Aucun frame de cookies trouvé, tentative sur la page principale...');
-                
-                // Fallback sur la page principale
-                await page.waitForSelector('button.button_acceptAll, button[aria-label="Accepter la collecte de vos données"]', { 
-                    visible: true, 
-                    timeout: 5000 
-                });
-                
-                const cookieSelectors = [
-                    'button.button_acceptAll',
-                    'button[aria-label="Accepter la collecte de vos données"]',
-                    'button[aria-label*="Accepter"]'
-                ];
-                
-                for (const selector of cookieSelectors) {
-                    try {
-                        const button = await page.$(selector);
-                        if (button) {
-                            console.log(`Clic sur le bouton cookie avec le sélecteur: ${selector}`);
-                            await button.click();
-                            break;
-                        }
-                    } catch (err) {
-                        console.log(`Sélecteur ${selector} non trouvé, essai suivant...`);
-                    }
-                }
             }
             
             console.log('Gestion des cookies terminée.');
-        await delay(1000, 2000);
+            await delay(1000, 2000);
         } catch (error) {
             console.log('Aucune popup de cookies détectée ou déjà gérée.');
         }
@@ -159,7 +126,6 @@ export default async function Pages_jaunes(object, city, fileName) {
                 }
             }
             
-            // Attendre un peu plus pour s'assurer que tous les éléments sont chargés
             await delay(2000, 4000);
             console.log('Résultats de recherche chargés.');
 
@@ -271,10 +237,10 @@ export default async function Pages_jaunes(object, city, fileName) {
             // Filtrer les liens qui ne sont pas des pages de détail d'entreprise
             const validDetailLinks = detailLinks.filter(link => {
                 // Vérifier que c'est un lien vers une page de détail d'entreprise
-                const isValidProsLink = link.includes('/pros/') && 
-                                      !link.includes('chercherlespros') &&
-                                      !link.includes('recherche') &&
-                                      link.match(/\/pros\/\d+/); // Doit contenir un ID numérique
+                const isValidProsLink = (link.includes('/pros/') && 
+                                       !link.includes('chercherlespros') &&
+                                       !link.includes('recherche') &&
+                                       (link.match(/\/pros\/\d+/) || link.includes('code_etablissement='))); // Accepte les liens avec code_etablissement
                 
                 if (!isValidProsLink) {
                     console.log(`Lien filtré: ${link}`);
@@ -286,7 +252,7 @@ export default async function Pages_jaunes(object, city, fileName) {
             console.log(`Liens valides trouvés: ${validDetailLinks.length}/${detailLinks.length}`);
             
             // Si nous n'avons pas assez de liens, essayer une méthode alternative
-            if (validDetailLinks.length < 10) {
+            if (validDetailLinks.length < detailLinks.length) {
                 console.log('Peu de liens trouvés, tentative de méthode alternative...');
                 
                 // Méthode alternative : cliquer directement sur chaque listing
@@ -362,235 +328,325 @@ export default async function Pages_jaunes(object, city, fileName) {
                 console.log(`Après méthode alternative: ${validDetailLinks.length} liens valides`);
             }
             
-            // Traiter les entreprises dans l'ordre d'affichage
-            for (let i = 0; i < validDetailLinks.length; i++) {
-                const currentUrl = validDetailLinks[i];
+            // Si pas assez de liens valides, essayer de cliquer directement sur les éléments de la liste
+            if (validDetailLinks.length < detailLinks.length) {
+                console.log('Aucun lien trouvé, tentative de clic direct sur les éléments...');
                 
-                // Vérifier si cette URL a déjà été traitée
-                if (processedUrls.has(currentUrl)) {
-                    console.log(`URL déjà traitée, passage à la suivante: ${currentUrl}`);
-                    continue;
+                // Cliquer directement sur chaque élément de la liste
+                const businessListings = await page.$$('li.bi');
+                console.log(`Nombre d'éléments de liste trouvés: ${businessListings.length}`);
+                
+                for (let i = 0; i < businessListings.length; i++) {
+                    try {
+                        console.log(`Clic sur l'élément ${i + 1}/${businessListings.length}...`);
+                        
+                        // Cliquer sur l'élément
+                        await businessListings[i].click();
+                        await delay(2000, 4000);
+                        
+                        // Vérifier si nous sommes sur une page de détail
+                        const currentUrl = await page.url();
+                        if (currentUrl.includes('/pros/') && currentUrl.includes('detail')) {
+                            console.log(`Navigation réussie vers: ${currentUrl}`);
+                            
+                            // Récupérer les informations de l'entreprise
+                            const companyInfo = await page.evaluate(() => {
+                                const info = {
+                                    name: '',
+                                    address: '',
+                                    phone: '',
+                                    website: '',
+                                    email: '',
+                                    additionalInfo: ''
+                                };
+
+                                // Nom de l'entreprise
+                                const nameElement = document.querySelector('div.bi-content h3, h1');
+                                if (nameElement) {
+                                    info.name = nameElement.innerText.trim();
+                                }
+
+                                // Adresse
+                                const addressElement = document.querySelector('div.bi-content > div:nth-child(2)');
+                                if (addressElement) {
+                                    info.address = addressElement.innerText.trim().replace('Voir le plan', '').trim();
+                                }
+
+                                // Téléphone
+                                const phoneElement = document.querySelector('.coord-numero');
+                                if (phoneElement) {
+                                    info.phone = phoneElement.innerText.trim();
+                                }
+
+                                // Site web
+                                const websiteElement = document.querySelector('a[href*="http"]:not([href*="pagesjaunes"])');
+                                if (websiteElement) {
+                                    info.website = websiteElement.href;
+                                }
+
+                                // Email
+                                const emailElement = document.querySelector('a[href^="mailto:"]');
+                                if (emailElement) {
+                                    info.email = emailElement.href.replace('mailto:', '');
+                                }
+
+                                return info;
+                            });
+
+                            // Ajouter les données
+                            allData.push({
+                                name: companyInfo.name || 'Nom non trouvé',
+                                address: companyInfo.address || 'Adresse non trouvée',
+                                phone: companyInfo.phone || 'Numéro non trouvé',
+                                website: companyInfo.website || 'Site web non trouvé',
+                                email: companyInfo.email || 'Email non trouvé',
+                                additionalInfo: companyInfo.additionalInfo || ''
+                            });
+
+                            console.log(`Entreprise traitée : ${companyInfo.name}`);
+                        }
+                        
+                        // Revenir à la page de résultats
+                        await page.goBack();
+                        await delay(2000, 4000);
+                        
+                    } catch (error) {
+                        console.error(`Erreur lors du clic sur l'élément ${i + 1}:`, error);
+                    }
                 }
-                
-                processedUrls.add(currentUrl);
-                
-                try {
-                    console.log(`Traitement de l'entreprise ${i + 1}/${detailLinks.length}...`);
-                    console.log(`URL: ${currentUrl}`);
+            }
+            
+            // Traiter les entreprises dans l'ordre d'affichage seulement si nous avons des liens valides
+            if (validDetailLinks.length > 0) {
+                for (let i = 0; i < validDetailLinks.length; i++) {
+                    const currentUrl = validDetailLinks[i];
                     
-                    // Aller sur la page de détail
-                    await page.goto(currentUrl, { waitUntil: 'networkidle2' });
-                    await delay(2000, 4000);
-                    
-                    // Vérifier que nous sommes bien sur une page de détail d'entreprise
-                    const isDetailPage = await page.evaluate(() => {
-                        return window.location.href.includes('/pros/detail') || 
-                               document.querySelector('.bi-denomination, .denomination, h1');
-                    });
-                    
-                    if (!isDetailPage) {
-                        console.log(`Page ${i + 1} n'est pas une page de détail d'entreprise, passage à la suivante...`);
+                    // Vérifier si cette URL a déjà été traitée
+                    if (processedUrls.has(currentUrl)) {
+                        console.log(`URL déjà traitée, passage à la suivante: ${currentUrl}`);
                         continue;
                     }
-
-                    // Récupérer les informations de l'entreprise avec les sélecteurs précis
-                    const companyInfo = await page.evaluate(() => {
-                        const info = {
-                            name: '',
-                            address: '',
-                            phone: '',
-                            website: '',
-                            email: '',
-                            additionalInfo: ''
-                        };
-
-                        // Nom de l'entreprise - utiliser le sélecteur précis
-                        const nameElement = document.querySelector('div.bi-content h3');
-                        if (nameElement) {
-                            const name = nameElement.innerText.trim();
-                            if (name && 
-                                !name.includes('à') && 
-                                !name.includes('Bâtiment') &&
-                                !name.includes('PagesJaunes') &&
-                                name.length > 3 &&
-                                name.length < 100) {
-                                info.name = name;
-                                console.log(`Nom trouvé: ${name}`);
-                            }
-                        }
+                    
+                    processedUrls.add(currentUrl);
+                    
+                    try {
+                        console.log(`Traitement de l'entreprise ${i + 1}/${detailLinks.length}...`);
+                        console.log(`URL: ${currentUrl}`);
                         
-                        // Si toujours pas de nom trouvé, essayer de le récupérer depuis l'URL
-                        if (!info.name) {
-                            const url = window.location.href;
-                            const match = url.match(/detail\?.*?=([^&]+)/);
-                            if (match) {
-                                info.name = decodeURIComponent(match[1]).replace(/\+/g, ' ');
-                            }
-                        }
+                        // Aller sur la page de détail
+                        await page.goto(currentUrl, { waitUntil: 'networkidle2' });
+                        await delay(2000, 4000);
                         
-                        // Dernière tentative : chercher dans le titre de la page
-                        if (!info.name || info.name.includes('à')) {
-                            const title = document.title;
-                            if (title && !title.includes('PagesJaunes')) {
-                                info.name = title.replace(' - PagesJaunes', '').replace(' | PagesJaunes', '');
-                            }
+                        // Vérifier que nous sommes bien sur une page de détail d'entreprise
+                        const isDetailPage = await page.evaluate(() => {
+                            return window.location.href.includes('/pros/detail') || 
+                                   document.querySelector('.bi-denomination, .denomination, h1');
+                        });
+                        
+                        if (!isDetailPage) {
+                            console.log(`Page ${i + 1} n'est pas une page de détail d'entreprise, passage à la suivante...`);
+                            continue;
                         }
 
-                        // Adresse - utiliser le sélecteur précis
-                        const addressElement = document.querySelector('div.bi-content > div:nth-child(2)');
-                        if (addressElement) {
-                            let addressText = addressElement.innerText.trim();
-                            addressText = addressText.replace('Voir le plan', '').trim();
-                            if (addressText && addressText.length > 5) {
-                                info.address = addressText;
-                                console.log(`Adresse trouvée: ${addressText}`);
+                        // Récupérer les informations de l'entreprise avec les sélecteurs précis
+                        const companyInfo = await page.evaluate(() => {
+                            const info = {
+                                name: '',
+                                address: '',
+                                phone: '',
+                                website: '',
+                                email: '',
+                                additionalInfo: ''
+                            };
+
+                            // Nom de l'entreprise - utiliser le sélecteur précis
+                            const nameElement = document.querySelector('div.bi-content h3');
+                            if (nameElement) {
+                                const name = nameElement.innerText.trim();
+                                if (name && 
+                                    !name.includes('à') && 
+                                    !name.includes('Bâtiment') &&
+                                    !name.includes('PagesJaunes') &&
+                                    name.length > 3 &&
+                                    name.length < 100) {
+                                    info.name = name;
+                                    console.log(`Nom trouvé: ${name}`);
+                                }
                             }
-                        }
-                        
-                        // Si pas d'adresse trouvée, essayer le lien "Voir le plan"
-                        if (!info.address) {
-                            const planLink = document.querySelector('a[href*="voir-le-plan"]');
-                            if (planLink) {
-                                const addressText = planLink.innerText.trim();
+                            
+                            // Si toujours pas de nom trouvé, essayer de le récupérer depuis l'URL
+                            if (!info.name) {
+                                const url = window.location.href;
+                                const match = url.match(/detail\?.*?=([^&]+)/);
+                                if (match) {
+                                    info.name = decodeURIComponent(match[1]).replace(/\+/g, ' ');
+                                }
+                            }
+                            
+                            // Dernière tentative : chercher dans le titre de la page
+                            if (!info.name || info.name.includes('à')) {
+                                const title = document.title;
+                                if (title && !title.includes('PagesJaunes')) {
+                                    info.name = title.replace(' - PagesJaunes', '').replace(' | PagesJaunes', '');
+                                }
+                            }
+
+                            // Adresse - utiliser le sélecteur précis
+                            const addressElement = document.querySelector('div.bi-content > div:nth-child(2)');
+                            if (addressElement) {
+                                let addressText = addressElement.innerText.trim();
+                                addressText = addressText.replace('Voir le plan', '').trim();
                                 if (addressText && addressText.length > 5) {
                                     info.address = addressText;
-                                    console.log(`Adresse trouvée via lien plan: ${addressText}`);
+                                    console.log(`Adresse trouvée: ${addressText}`);
                                 }
                             }
-                        }
-
-                        // Numéros de téléphone - utiliser le sélecteur précis pour le bouton
-                        const phoneNumbers = [];
-                        
-                        // Chercher les numéros déjà affichés
-                        const phoneSelectors = [
-                            '.coord-numero',
-                            '.number-contact span',
-                            '.bi-ctas .btn_tel + span',
-                            'span[aria-label*="numéro"]',
-                            '.contact-info span',
-                            '.phone-number',
-                            '.coord-liste-numero span'
-                        ];
-                        
-                        for (const selector of phoneSelectors) {
-                            const elements = document.querySelectorAll(selector);
-                            elements.forEach(el => {
-                                const text = el.innerText.trim();
-                                if (/^(0[1-9])(\d{8})$/.test(text.replace(/\s/g, ''))) {
-                                    phoneNumbers.push(text);
-                                }
-                            });
-                        }
-
-                        // Si pas de numéros trouvés, cliquer sur le bouton "Afficher le N°" avec le sélecteur précis
-                        if (phoneNumbers.length === 0) {
-                            const showNumberBtn = document.querySelector('button[aria-label*="Afficher le N°"]');
-                            if (showNumberBtn) {
-                                showNumberBtn.click();
-                                console.log('Bouton "Afficher le N°" cliqué');
-                                
-                                // Attendre un peu et chercher à nouveau
-                                setTimeout(() => {
-                                    const newPhoneElements = document.querySelectorAll('.coord-numero');
-                                    newPhoneElements.forEach(el => {
-                                        const text = el.innerText.trim();
-                                        if (/^(0[1-9])(\d{8})$/.test(text.replace(/\s/g, ''))) {
-                                            phoneNumbers.push(text);
-                                        }
-                                    });
-                                }, 2000);
-                            }
-                        }
-
-                        info.phone = phoneNumbers.join('; ');
-
-                        // Site web - utiliser le sélecteur précis
-                        const websiteElement = document.querySelector('a[href*="http"]:not([href*="pagesjaunes"])');
-                        if (websiteElement) {
-                            const href = websiteElement.href;
-                            if (href && href.includes('www')) {
-                                info.website = href;
-                                console.log(`Site web trouvé: ${href}`);
-                            }
-                        }
-                        
-                        // Fallback: chercher dans le texte affiché
-                        if (!info.website) {
-                            const websiteTextElement = document.querySelector('a.SITE_EXTERNE span.value');
-                            if (websiteTextElement) {
-                                const text = websiteTextElement.innerText.trim();
-                                if (text && text.includes('www')) {
-                                    info.website = text;
-                                    console.log(`Site web trouvé via texte: ${text}`);
+                            
+                            // Si pas d'adresse trouvée, essayer le lien "Voir le plan"
+                            if (!info.address) {
+                                const planLink = document.querySelector('a[href*="voir-le-plan"]');
+                                if (planLink) {
+                                    const addressText = planLink.innerText.trim();
+                                    if (addressText && addressText.length > 5) {
+                                        info.address = addressText;
+                                        console.log(`Adresse trouvée via lien plan: ${addressText}`);
+                                    }
                                 }
                             }
-                        }
 
-                        // Email
-                        const emailElement = document.querySelector('a[href^="mailto:"], .email');
-                        if (emailElement) {
-                            const email = emailElement.href.replace('mailto:', '') || emailElement.innerText.trim();
-                            if (email.includes('@')) {
-                                info.email = email;
-            }
-                        }
-
-                        // Informations supplémentaires - utiliser le sélecteur précis
-                        const additionalInfo = [];
-                        
-                        // Description de l'entreprise
-                        const descElement = document.querySelector('.bi-desc');
-                        if (descElement) {
-                            const text = descElement.innerText.trim();
-                            if (text) {
-                                additionalInfo.push(`Description: ${text}`);
+                            // Numéros de téléphone - utiliser le sélecteur précis pour le bouton
+                            const phoneNumbers = [];
+                            
+                            // Chercher les numéros déjà affichés
+                            const phoneSelectors = [
+                                '.coord-numero',
+                                '.number-contact span',
+                                '.bi-ctas .btn_tel + span',
+                                'span[aria-label*="numéro"]',
+                                '.contact-info span',
+                                '.phone-number',
+                                '.coord-liste-numero span'
+                            ];
+                            
+                            for (const selector of phoneSelectors) {
+                                const elements = document.querySelectorAll(selector);
+                                elements.forEach(el => {
+                                    const text = el.innerText.trim();
+                                    if (/^(0[1-9])(\d{8})$/.test(text.replace(/\s/g, ''))) {
+                                        phoneNumbers.push(text);
+                                    }
+                                });
                             }
-                        }
-                        
-                        // Type d'activité
-                        const activityElement = document.querySelector('.bi-activity-unit-small');
-                        if (activityElement) {
-                            const text = activityElement.innerText.trim();
-                            if (text) {
-                                additionalInfo.push(`Activité: ${text}`);
+
+                            // Si pas de numéros trouvés, cliquer sur le bouton "Afficher le N°" avec le sélecteur précis
+                            if (phoneNumbers.length === 0) {
+                                const showNumberBtn = document.querySelector('button[aria-label*="Afficher le N°"]');
+                                if (showNumberBtn) {
+                                    showNumberBtn.click();
+                                    console.log('Bouton "Afficher le N°" cliqué');
+                                    
+                                    // Attendre un peu et chercher à nouveau
+                                    setTimeout(() => {
+                                        const newPhoneElements = document.querySelectorAll('.coord-numero');
+                                        newPhoneElements.forEach(el => {
+                                            const text = el.innerText.trim();
+                                            if (/^(0[1-9])(\d{8})$/.test(text.replace(/\s/g, ''))) {
+                                                phoneNumbers.push(text);
+                                            }
+                                        });
+                                    }, 2000);
+                                }
                             }
-                        }
-                        
-                        // Avis et étoiles
-                        const starsElement = document.querySelector('.bi-stars .rating');
-                        const avisElement = document.querySelector('.bi-stars .nbAvis');
-                        if (starsElement || avisElement) {
-                            const stars = starsElement ? starsElement.innerText.trim() : '';
-                            const avis = avisElement ? avisElement.innerText.trim() : '';
-                            if (stars || avis) {
-                                additionalInfo.push(`Avis: ${stars} ${avis}`);
+
+                            info.phone = phoneNumbers.join('; ');
+
+                            // Site web - utiliser le sélecteur précis
+                            const websiteElement = document.querySelector('a[href*="http"]:not([href*="pagesjaunes"])');
+                            if (websiteElement) {
+                                const href = websiteElement.href;
+                                if (href && href.includes('www')) {
+                                    info.website = href;
+                                    console.log(`Site web trouvé: ${href}`);
+                                }
                             }
-                        }
-                        
-                        info.additionalInfo = additionalInfo.join(' | ');
+                            
+                            // Fallback: chercher dans le texte affiché
+                            if (!info.website) {
+                                const websiteTextElement = document.querySelector('a.SITE_EXTERNE span.value');
+                                if (websiteTextElement) {
+                                    const text = websiteTextElement.innerText.trim();
+                                    if (text && text.includes('www')) {
+                                        info.website = text;
+                                        console.log(`Site web trouvé via texte: ${text}`);
+                                    }
+                                }
+                            }
 
-                        return info;
-                    });
+                            // Email
+                            const emailElement = document.querySelector('a[href^="mailto:"], .email');
+                            if (emailElement) {
+                                const email = emailElement.href.replace('mailto:', '') || emailElement.innerText.trim();
+                                if (email.includes('@')) {
+                                    info.email = email;
+                                }
+                            }
 
-                    // Ajouter les données à la liste
-                    allData.push({
-                        name: companyInfo.name || 'Nom non trouvé',
-                        address: companyInfo.address || 'Adresse non trouvée',
-                        phone: companyInfo.phone || 'Numéro non trouvé',
-                        website: companyInfo.website || 'Site web non trouvé',
-                        email: companyInfo.email || 'Email non trouvé',
-                        additionalInfo: companyInfo.additionalInfo || ''
-                    });
+                            // Informations supplémentaires - utiliser le sélecteur précis
+                            const additionalInfo = [];
+                            
+                            // Description de l'entreprise
+                            const descElement = document.querySelector('.bi-desc');
+                            if (descElement) {
+                                const text = descElement.innerText.trim();
+                                if (text) {
+                                    additionalInfo.push(`Description: ${text}`);
+                                }
+                            }
+                            
+                            // Type d'activité
+                            const activityElement = document.querySelector('.bi-activity-unit-small');
+                            if (activityElement) {
+                                const text = activityElement.innerText.trim();
+                                if (text) {
+                                    additionalInfo.push(`Activité: ${text}`);
+                                }
+                            }
+                            
+                            // Avis et étoiles
+                            const starsElement = document.querySelector('.bi-stars .rating');
+                            const avisElement = document.querySelector('.bi-stars .nbAvis');
+                            if (starsElement || avisElement) {
+                                const stars = starsElement ? starsElement.innerText.trim() : '';
+                                const avis = avisElement ? avisElement.innerText.trim() : '';
+                                if (stars || avis) {
+                                    additionalInfo.push(`Avis: ${stars} ${avis}`);
+                                }
+                            }
+                            
+                            info.additionalInfo = additionalInfo.join(' | ');
 
-                    console.log(`Entreprise traitée : ${companyInfo.name}`);
-                    console.log(`  - Adresse: ${companyInfo.address}`);
-                    console.log(`  - Téléphone: ${companyInfo.phone}`);
-                    console.log(`  - Site web: ${companyInfo.website}`);
-                    console.log(`  - Email: ${companyInfo.email}`);
+                            return info;
+                        });
 
-                } catch (error) {
-                    console.error(`Erreur lors du traitement de l'entreprise ${i + 1}:`, error);
+                        // Ajouter les données à la liste
+                        allData.push({
+                            name: companyInfo.name || 'Nom non trouvé',
+                            address: companyInfo.address || 'Adresse non trouvée',
+                            phone: companyInfo.phone || 'Numéro non trouvé',
+                            website: companyInfo.website || 'Site web non trouvé',
+                            email: companyInfo.email || 'Email non trouvé',
+                            additionalInfo: companyInfo.additionalInfo || ''
+                        });
+
+                        console.log(`Entreprise traitée : ${companyInfo.name}`);
+                        console.log(`  - Adresse: ${companyInfo.address}`);
+                        console.log(`  - Téléphone: ${companyInfo.phone}`);
+                        console.log(`  - Site web: ${companyInfo.website}`);
+                        console.log(`  - Email: ${companyInfo.email}`);
+
+                    } catch (error) {
+                        console.error(`Erreur lors du traitement de l'entreprise ${i + 1}:`, error);
+                    }
                 }
             }
 
@@ -702,4 +758,4 @@ export default async function Pages_jaunes(object, city, fileName) {
         await browser.close();
         console.log('Navigateur fermé.');
     }
-}
+} 
