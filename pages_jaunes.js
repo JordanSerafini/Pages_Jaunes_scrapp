@@ -560,24 +560,66 @@ export default async function Pages_jaunes(object, city, fileName) {
 
                             info.phone = phoneNumbers.join('; ');
 
-                            // Site web - utiliser le sélecteur précis
-                            const websiteElement = document.querySelector('a[href*="http"]:not([href*="pagesjaunes"])');
-                            if (websiteElement) {
-                                const href = websiteElement.href;
-                                if (href && href.includes('www')) {
-                                    info.website = href;
-                                    console.log(`Site web trouvé: ${href}`);
+                            // Site web - utiliser les sélecteurs précis basés sur la structure HTML
+                            const websiteSelectors = [
+                                'a.MINISITE.pj-link',
+                                'a[class*="MINISITE"]',
+                                'a[href*="http"]:not([href*="pagesjaunes"]):not([href*="solocal"]):not([href*="audit-digital"])',
+                                'a.SITE_EXTERNE',
+                                'a[href^="http"]:not([href*="pagesjaunes"]):not([href*="solocal"])'
+                            ];
+                            
+                            let websiteFound = false;
+                            for (const selector of websiteSelectors) {
+                                const websiteElements = document.querySelectorAll(selector);
+                                for (const element of websiteElements) {
+                                    const href = element.href;
+                                    const text = element.innerText.trim();
+                                    
+                                    // Vérifier que ce n'est pas un lien PagesJaunes ou Solocal
+                                    if (href && 
+                                        !href.includes('pagesjaunes') && 
+                                        !href.includes('solocal.com') &&
+                                        !href.includes('audit-digital') &&
+                                        !href.includes('pjstats') &&
+                                        (href.includes('www') || href.includes('http'))) {
+                                        
+                                        info.website = href;
+                                        console.log(`Site web trouvé avec sélecteur "${selector}": ${href}`);
+                                        websiteFound = true;
+                                        break;
+                                    }
+                                    
+                                    // Si le href n'est pas bon, essayer le texte
+                                    if (text && 
+                                        !text.includes('pagesjaunes') && 
+                                        !text.includes('solocal.com') &&
+                                        !text.includes('audit-digital') &&
+                                        (text.includes('www') || text.includes('http'))) {
+                                        
+                                        info.website = text;
+                                        console.log(`Site web trouvé via texte avec sélecteur "${selector}": ${text}`);
+                                        websiteFound = true;
+                                        break;
+                                    }
                                 }
+                                if (websiteFound) break;
                             }
                             
-                            // Fallback: chercher dans le texte affiché
+                            // Fallback: chercher dans les spans avec la classe "value"
                             if (!info.website) {
-                                const websiteTextElement = document.querySelector('a.SITE_EXTERNE span.value');
-                                if (websiteTextElement) {
-                                    const text = websiteTextElement.innerText.trim();
-                                    if (text && text.includes('www')) {
+                                const valueSpans = document.querySelectorAll('span.value');
+                                for (const span of valueSpans) {
+                                    const text = span.innerText.trim();
+                                    if (text && 
+                                        !text.includes('pagesjaunes') && 
+                                        !text.includes('solocal.com') &&
+                                        !text.includes('audit-digital') &&
+                                        (text.includes('www') || text.includes('http'))) {
+                                        
                                         info.website = text;
-                                        console.log(`Site web trouvé via texte: ${text}`);
+                                        console.log(`Site web trouvé via span.value: ${text}`);
+                                        break;
                                     }
                                 }
                             }
@@ -671,7 +713,18 @@ export default async function Pages_jaunes(object, city, fileName) {
                 '.pagination a:last-child',
                 '.pagination-next',
                 'a[href*="page="]',
-                'a[href*="p="]'
+                'a[href*="p="]',
+                'a[href*="suivant"]',
+                'a[href*="next"]',
+                '.pagination a[href*="2"]',
+                '.pagination a[href*="3"]',
+                'a[data-page]',
+                'a[data-pagination]',
+                '.pagination .next',
+                '.pagination .suivant',
+                'a:contains("Suivant")',
+                'a:contains("Next")',
+                'a:contains(">")'
             ];
             
             let nextPageButton = null;
