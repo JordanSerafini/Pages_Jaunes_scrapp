@@ -54,20 +54,64 @@ async function extractInfoFromPage(page) {
             }
         }
 
-        // Si toujours pas de nom trouvé, essayer de le récupérer depuis l'URL
+        // 2. Si pas de nom fiable de h3, essayer de le récupérer depuis l'URL
         if (!info.name) {
             const url = window.location.href;
-            const match = url.match(/detail\?.*?=([^&]+)/);
-            if (match) {
-                info.name = decodeURIComponent(match[1]).replace(/\+/g, ' ');
+            // Prefer extracting segment after /pros/ if it looks like a name
+            let urlNameMatch = url.match(/\/pros\/([^/?#]+)/);
+            if (urlNameMatch && urlNameMatch[1]) {
+                let potentialName = decodeURIComponent(urlNameMatch[1]).replace(/\+/g, ' ').trim();
+                // Ensure it's not a numeric ID or common path segment
+                if (potentialName &&
+                    !/^\d+$/.test(potentialName) && // Not just numbers
+                    !potentialName.includes('code_etablissement=') &&
+                    !potentialName.includes('detail') &&
+                    !potentialName.includes('pros') &&
+                    !potentialName.includes('recherche') &&
+                    potentialName.length > 3) { // Ensure it's not too short
+                    info.name = potentialName;
+                    console.log(`Nom trouvé via URL path: ${info.name}`);
+                }
+            }
+
+            // Fallback to detail?code_etablissement= part if no better name from URL path
+            if (!info.name) {
+                const detailMatch = url.match(/detail\?.*?=([^&]+)/);
+                if (detailMatch && detailMatch[1]) {
+                    let potentialParamValue = decodeURIComponent(detailMatch[1]).replace(/\+/g, ' ').trim();
+
+                    // Check if the potential name from URL parameter is mostly numeric or very short/generic.
+                    const digitCount = (potentialParamValue.match(/\d/g) || []).length;
+                    // If it contains more than 50% digits and is longer than 5 chars, or is purely numeric and long enough, it's likely an ID.
+                    if (potentialParamValue.length > 5 && (digitCount / potentialParamValue.length > 0.5 || /^\d{6,}$/.test(potentialParamValue))) {
+                         console.log(`Potential name "${potentialParamValue}" from URL param looks like an ID, skipping.`);
+                         // Do not set info.name in this case
+                    } else if (potentialParamValue && !/^\d+$/.test(potentialParamValue) && potentialParamValue.length > 3) { // Still keep the original check for purely numeric and ensure length
+                        info.name = potentialParamValue;
+                        console.log(`Nom trouvé via URL param: ${info.name}`);
+                    }
+                }
             }
         }
 
-        // Dernière tentative : chercher dans le titre de la page
-        if (!info.name || info.name.includes('à')) {
+        // 3. Dernière tentative : chercher dans le titre de la page
+        if (!info.name) { // Only if still no name
             const title = document.title;
             if (title && !title.includes('PagesJaunes')) {
-                info.name = title.replace(' - PagesJaunes', '').replace(' | PagesJaunes', '');
+                let potentialName = title.replace(' - PagesJaunes', '').replace(' | PagesJaunes', '').trim();
+                if (potentialName && !potentialName.includes('à') && potentialName.length > 3) { // Exclude generic title and ensure length
+                     info.name = potentialName;
+                     console.log(`Nom trouvé via titre: ${info.name}`);
+                }
+            }
+        }
+
+        // Final sanity check for name: if it's still a number or too generic after all attempts, reset it
+        if (info.name) {
+            const normalizedFinalName = info.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
+            if (normalizedFinalName.length < 4 || /^\d+$/.test(normalizedFinalName) || normalizedFinalName.includes('pagesjaunes')) {
+                console.log(`Nom final "${info.name}" seems generic/numeric after normalization, resetting.`);
+                info.name = ''; // Reset to empty string so 'Nom non trouvé' can be applied by cleanData
             }
         }
 
@@ -259,6 +303,9 @@ export default async function Pages_jaunes(object, city, fileName) {
     const processedCompanies = new Set();
     const processedUrls = new Set();
     
+    let previousLinksHash = ''; // Variable pour détecter les boucles de pagination
+    let totalResults = 0; // Déclarer totalResults ici, si ce n'est pas déjà fait
+
     // Charger les entreprises déjà traitées depuis le fichier CSV existant
     try {
         const csvPath = path.join(__dirname, fileName);
@@ -282,13 +329,41 @@ export default async function Pages_jaunes(object, city, fileName) {
     }
     
     // Fonction pour normaliser le nom d'entreprise (supprimer accents, espaces, etc.)
-    const normalizeCompanyName = (name) => {
-        return name
+    const normalizeCompanyName = (name, address = '') => {
+        let normalized = name
             .toLowerCase()
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '') // Supprimer les accents
-            .replace(/[^a-z0-9]/g, '') // Garder seulement lettres et chiffres
+            .replace(/[^a-z0-9\s]/g, '') // Garder lettres, chiffres et espaces
+            .replace(/\s+/g, ' ') // Remplacer les espaces multiples par un seul
             .trim();
+
+        // Si le nom est très court ou générique, inclure une partie de l'adresse
+        if (normalized.length <= 4 || /^(sarl|eurl|sas|sa|btp)$/.test(normalized)) {
+            const normalizedAddress = address
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9\s]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            // Extraire le code postal ou la ville de l'adresse si disponible
+            const postcodeMatch = normalizedAddress.match(/\b\\d{5}\b/); // Code postal
+            const cityMatch = normalizedAddress.match(/\\b([a-z-]+)\\s+\\d{5}\\b/); // Ville avant code postal
+
+            let addressPart = '';
+            if (postcodeMatch) {
+                addressPart = postcodeMatch[0];
+            } else if (cityMatch) {
+                addressPart = cityMatch[1];
+            }
+
+            if (addressPart) {
+                normalized = `${normalized}_${addressPart}`; // Concaténer avec une partie de l'adresse
+            }
+        }
+        return normalized;
     };
 
     if (!fileName.endsWith('.csv')) {
@@ -309,7 +384,7 @@ export default async function Pages_jaunes(object, city, fileName) {
     });
 
     const browser = await puppeteer.launch({ 
-        headless: true, 
+        headless: false, 
         protocolTimeout: 120000, // Augmenter le timeout
         args: [
             '--no-sandbox',
@@ -469,39 +544,41 @@ export default async function Pages_jaunes(object, city, fileName) {
             console.log('Résultats de recherche chargés.');
 
             // Extraire le nombre total de résultats
-            let totalResults = 0;
             try {
-                totalResults = await page.evaluate(() => {
+                const totalResultsText = await page.evaluate(() => {
                     // Chercher le nombre de résultats dans différents sélecteurs
                     const selectors = [
                         '#SEL-nbresultat',
                         '.pjts_nbresultat span',
                         '.denombrement span',
                         '[class*="nbresultat"]',
-                        '[id*="nbresultat"]'
+                        '[id*="nbresultat"]',
+                        '.search-results-label strong',
+                        '.number-of-results' // Le sélecteur que tu as suggéré
                     ];
                     
                     for (const selector of selectors) {
                         const element = document.querySelector(selector);
                         if (element) {
-                            const text = element.textContent.trim();
-                            // Extraire les chiffres du texte (ex: "3 759 résultats" -> 3759)
-                            const match = text.match(/(\d[\d\s]*)/);
-                            if (match) {
-                                return parseInt(match[1].replace(/\s/g, ''));
-                            }
+                            return element.textContent; // Retourner le texte directement pour traitement externe
                         }
                     }
-                    return 0;
+                    return null; // Aucun élément trouvé
                 });
-                
-                if (totalResults > 0) {
-                    console.log(`Nombre total de résultats trouvés: ${totalResults}`);
+
+                if (totalResultsText) {
+                    const match = totalResultsText.match(/\d[\d\s]*/g);
+                    if (match && match.length > 0) {
+                        totalResults = parseInt(match[0].replace(/\s/g, ''), 10);
+                        console.log(`Nombre total de résultats trouvés: ${totalResults}`);
+                    } else {
+                        console.log('Le texte du nombre de résultats ne contient pas de chiffres.');
+                    }
                 } else {
-                    console.log('Nombre total de résultats non trouvé');
+                    console.log('Aucun élément de nombre de résultats trouvé.');
                 }
             } catch (error) {
-                console.log('Erreur lors de l\'extraction du nombre total de résultats:', error.message);
+                console.error("Erreur lors de l\'extraction du nombre de résultats :", error.message);
             }
 
             // Vérifier que nous sommes bien sur une page de résultats
@@ -618,9 +695,6 @@ export default async function Pages_jaunes(object, city, fileName) {
                 });
             }
 
-            // Traiter chaque entreprise individuellement dans l'ordre d'affichage
-            const processedUrls = new Set();
-            
             // Filtrer les liens qui ne sont pas des pages de détail d'entreprise
             const validDetailLinks = detailLinks.filter(link => {
                 // Vérifier que c'est un lien vers une page de détail d'entreprise
@@ -670,7 +744,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                         const info = await extractInfoFromPage(newPage);
                         
                         // Vérifier si cette entreprise a déjà été traitée (par nom normalisé)
-                        const normalizedName = normalizeCompanyName(info.name);
+                        const normalizedName = normalizeCompanyName(info.name, info.address);
                         if (processedCompanies.has(normalizedName)) {
                             console.log(`Entreprise déjà traitée, passage à la suivante: ${info.name}`);
                             processedUrls.add(link);
@@ -703,13 +777,44 @@ export default async function Pages_jaunes(object, city, fileName) {
                 totalProcessed += validResults.length;
                 
                 // Afficher le progrès avec le total si disponible
-                if (totalResults > 0) {
+                if (typeof totalResults === 'number' && totalResults > 0) {
                     console.log(`Progrès: ${totalProcessed}/${totalResults} entreprises (${Math.round((totalProcessed/totalResults)*100)}%)`);
                 } else {
                     console.log(`Total traité jusqu'ici: ${totalProcessed} entreprises`);
                 }
 
-                // Écrire les données par petits lots pour éviter la perte de données
+                        // Détection de boucle de pagination
+                        const currentLinksHash = validDetailLinks.slice(0, 3).join(',');
+                        if (currentLinksHash === previousLinksHash && currentLinksHash !== '') {
+                            console.warn(`❌ Page ${pageNbr} identique à la précédente. Pagination bloquée ou figée.`);
+                            console.warn(`Liens répétés: ${currentLinksHash}`);
+                            await page.screenshot({ path: `./debug_page_${pageNbr}.png`, fullPage: true });
+                            fs.writeFileSync(`./debug_page_${pageNbr}.html`, await page.content());
+
+                            // Tenter de débloquer la pagination
+                            console.log('Tentative de débloquer la pagination: suppression cookies, rechargement et nouvelle recherche...');
+                            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+                            await delay(1000, 2000);
+
+                            await page.deleteCookie(...await page.cookies());
+                            await page.reload({ waitUntil: 'domcontentloaded' });
+                            await delay(1000, 2000); // Délai après rechargement
+
+                            // Re-entrer les critères de recherche
+                            await page.type('#ou', city);
+                            await delayShort();
+                            await page.type('#quoiqui', object);
+                            await delayShort();
+                            await page.click('#findId');
+                            console.log('Recherche soumise à nouveau après déblocage...');
+                            await delayPageChange();
+
+                            // Ne pas casser la boucle, mais continuer avec la nouvelle page de résultats
+                            continue; 
+                        }
+                        previousLinksHash = currentLinksHash;
+
+                        // Écrire les données par petits lots pour éviter la perte de données
                 if (allData.length >= 10) {
                     const batchToWrite = allData.splice(0, allData.length);
                     await csvWriter.writeRecords(batchToWrite);
@@ -1176,10 +1281,13 @@ export default async function Pages_jaunes(object, city, fileName) {
 
 
         console.log(`Données collectées et écrites dans le fichier ${fileName} avec succès.`);
-        if (totalResults > 0) {
+        if (typeof totalResults === 'number' && totalResults > 0) {
             console.log(`Progrès final: ${totalProcessed}/${totalResults} entreprises (${Math.round((totalProcessed/totalResults)*100)}%)`);
         } else {
             console.log(`Total final d'entreprises traitées: ${totalProcessed}`);
+            if (!totalResults) {
+                console.warn("⚠️ Impossible de déterminer le nombre total d'entreprises. Le sélecteur a peut-être changé.");
+            }
         }
 
     } catch (error) {
