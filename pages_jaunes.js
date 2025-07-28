@@ -56,7 +56,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                 
                 await cookieFrame.waitForSelector('button.button_acceptAll, button[aria-label="Accepter la collecte de vos données"]', { 
                     visible: true, 
-                    timeout: 5000 
+                    timeout: 3000 
                 });
                 
                 const cookieSelectors = [
@@ -117,16 +117,16 @@ export default async function Pages_jaunes(object, city, fileName) {
         while (hasNextPage) {
             // Attendre que les résultats se chargent avec les nouveaux sélecteurs
             try {
-                await page.waitForSelector('li.bi', { visible: true, timeout: 150000 });
+                await page.waitForSelector('li.bi', { visible: true, timeout: 30000 });
             } catch (error) {
                 try {
-                    await page.waitForSelector('.bi-denomination', { visible: true, timeout: 150000 });
+                    await page.waitForSelector('.bi-denomination', { visible: true, timeout: 30000 });
                 } catch (error2) {
-                    await page.waitForSelector('a[href*="/pros/"]', { visible: true, timeout: 150000 });
+                    await page.waitForSelector('a[href*="/pros/"]', { visible: true, timeout: 30000 });
                 }
             }
             
-            await delay(2000, 4000);
+            await delay(1000, 2000);
             console.log('Résultats de recherche chargés.');
 
             // Vérifier que nous sommes bien sur une page de résultats
@@ -806,7 +806,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                                 const nextBtn = document.querySelector('#pagination-next, a[aria-label*="Suivant"], .pagination a:last-child');
                                 if (nextBtn) nextBtn.click();
                             });
-                            await delay(3000, 5000);
+                            await delay(1500, 2500);
                             if (await page.url() !== previousUrl) {
                                 clickSuccess = true;
                                 console.log('Clic alternatif réussi.');
@@ -820,7 +820,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                                 if (nextPageHref) {
                                     console.log(`Navigation directe vers: ${nextPageHref}`);
                                     await page.goto(nextPageHref, { waitUntil: 'networkidle2' });
-                                    await delay(2000, 4000);
+                                    await delay(1000, 2000);
                                     clickSuccess = true;
                                 }
                             }
@@ -836,7 +836,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                     console.log(`Passage à la page suivante... ${pageNbr}`);
                     
                     // Attendre que les nouveaux résultats se chargent
-                    await page.waitForSelector('li.bi', { visible: true, timeout: 20000 }); // Timeout plus long
+                    await page.waitForSelector('li.bi', { visible: true, timeout: 15000 }); // Timeout réduit
                     console.log('Nouveaux résultats chargés.');
                     
                     // Vérifier que nous sommes bien sur une nouvelle page (numéro de page)
@@ -919,7 +919,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                     try {
                         console.log('Tentative de navigation directe vers la page suivante...');
                         await page.goto(nextPageUrl, { waitUntil: 'networkidle2' });
-                        await delay(3000, 5000);
+                        await delay(1500, 2500);
                         
                         // Vérifier si nous avons de nouveaux résultats
                         const newResults = await page.evaluate(() => {
