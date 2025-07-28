@@ -271,7 +271,7 @@ export default async function Pages_jaunes(object, city, fileName) {
     });
 
     const browser = await puppeteer.launch({ 
-        headless: false, 
+        headless: true, 
         protocolTimeout: 120000, // Augmenter le timeout
         args: [
             '--no-sandbox',
