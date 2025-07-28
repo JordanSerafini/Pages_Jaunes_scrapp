@@ -183,8 +183,16 @@ export default async function Pages_jaunes(object, city, fileName) {
             // Traiter chaque entreprise individuellement
             const processedUrls = new Set();
             
-            for (let i = 0; i < detailLinks.length; i++) {
-                const currentUrl = detailLinks[i];
+            // Filtrer les liens qui ne sont pas des pages de détail d'entreprise
+            const validDetailLinks = detailLinks.filter(link => 
+                link.includes('/pros/') && 
+                !link.includes('chercherlespros')
+            );
+            
+            console.log(`Liens valides trouvés: ${validDetailLinks.length}/${detailLinks.length}`);
+            
+            for (let i = 0; i < validDetailLinks.length; i++) {
+                const currentUrl = validDetailLinks[i];
                 
                 // Vérifier si cette URL a déjà été traitée
                 if (processedUrls.has(currentUrl)) {
