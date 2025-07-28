@@ -97,7 +97,7 @@ export default async function Pages_jaunes(object, city, fileName) {
             }
             
             console.log('Gestion des cookies terminée.');
-            await delay(1000, 2000);
+            await delay(500, 1000);
         } catch (error) {
             console.log('Aucune popup de cookies détectée ou déjà gérée.');
         }
@@ -434,8 +434,8 @@ export default async function Pages_jaunes(object, city, fileName) {
                         console.log(`URL: ${currentUrl}`);
                         
                         // Aller sur la page de détail
-                        await page.goto(currentUrl, { waitUntil: 'networkidle2' });
-                        await delay(2000, 4000);
+                        await page.goto(currentUrl, { waitUntil: 'domcontentloaded' });
+                        await delay(1000, 2000);
                         
                         // Vérifier que nous sommes bien sur une page de détail d'entreprise
                         const isDetailPage = await page.evaluate(() => {
