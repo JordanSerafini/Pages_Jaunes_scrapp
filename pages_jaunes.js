@@ -834,36 +834,60 @@ export default async function Pages_jaunes(object, city, fileName) {
                     console.log('Impossible de cliquer sur le bouton "Suivant" après plusieurs tentatives. Fin du traitement.');
                     hasNextPage = false;
                 }
-            } else {
-                console.log('Aucun bouton "Suivant" trouvé avec tous les sélecteurs testés.');
-                
-                // Méthode alternative : essayer de détecter la pagination via l'URL
-                const currentUrl = await page.url();
-                console.log(`URL actuelle: ${currentUrl}`);
-                
-                // Essayer de construire l'URL de la page suivante
-                let nextPageUrl = null;
-                
-                if (currentUrl.includes('page=')) {
-                    const pageMatch = currentUrl.match(/page=(\d+)/);
-                    if (pageMatch) {
-                        const currentPage = parseInt(pageMatch[1]);
-                        nextPageUrl = currentUrl.replace(`page=${currentPage}`, `page=${currentPage + 1}`);
+                            } else {
+                    console.log('Aucun bouton "Suivant" trouvé avec tous les sélecteurs testés.');
+                    
+                    // Analyser la structure de pagination pour détecter s'il y a d'autres pages
+                    const paginationInfo = await page.evaluate(() => {
+                        const paginationElements = document.querySelectorAll('.pagination a, .pagination li, a[href*="page"], a[href*="p="]');
+                        const paginationData = [];
+                        
+                        paginationElements.forEach(el => {
+                            const text = el.innerText.trim();
+                            const href = el.href;
+                            const classes = el.className;
+                            
+                            if (text && (text.match(/\d+/) || text.includes('Suivant') || text.includes('Next') || text.includes('>'))) {
+                                paginationData.push({
+                                    text: text,
+                                    href: href,
+                                    classes: classes
+                                });
+                            }
+                        });
+                        
+                        return paginationData;
+                    });
+                    
+                    console.log('Éléments de pagination trouvés:', paginationInfo);
+                    
+                    // Méthode alternative : essayer de détecter la pagination via l'URL
+                    const currentUrl = await page.url();
+                    console.log(`URL actuelle: ${currentUrl}`);
+                    
+                    // Essayer de construire l'URL de la page suivante
+                    let nextPageUrl = null;
+                    
+                    if (currentUrl.includes('page=')) {
+                        const pageMatch = currentUrl.match(/page=(\d+)/);
+                        if (pageMatch) {
+                            const currentPage = parseInt(pageMatch[1]);
+                            nextPageUrl = currentUrl.replace(`page=${currentPage}`, `page=${currentPage + 1}`);
+                            console.log(`Tentative de navigation vers la page suivante: ${nextPageUrl}`);
+                        }
+                    } else if (currentUrl.includes('p=')) {
+                        const pageMatch = currentUrl.match(/p=(\d+)/);
+                        if (pageMatch) {
+                            const currentPage = parseInt(pageMatch[1]);
+                            nextPageUrl = currentUrl.replace(`p=${currentPage}`, `p=${currentPage + 1}`);
+                            console.log(`Tentative de navigation vers la page suivante: ${nextPageUrl}`);
+                        }
+                    } else {
+                        // Si pas de paramètre de page, ajouter page=2
+                        const separator = currentUrl.includes('?') ? '&' : '?';
+                        nextPageUrl = `${currentUrl}${separator}page=2`;
                         console.log(`Tentative de navigation vers la page suivante: ${nextPageUrl}`);
                     }
-                } else if (currentUrl.includes('p=')) {
-                    const pageMatch = currentUrl.match(/p=(\d+)/);
-                    if (pageMatch) {
-                        const currentPage = parseInt(pageMatch[1]);
-                        nextPageUrl = currentUrl.replace(`p=${currentPage}`, `p=${currentPage + 1}`);
-                        console.log(`Tentative de navigation vers la page suivante: ${nextPageUrl}`);
-                    }
-                } else {
-                    // Si pas de paramètre de page, ajouter page=2
-                    const separator = currentUrl.includes('?') ? '&' : '?';
-                    nextPageUrl = `${currentUrl}${separator}page=2`;
-                    console.log(`Tentative de navigation vers la page suivante: ${nextPageUrl}`);
-                }
                 
                 if (nextPageUrl) {
                     try {
