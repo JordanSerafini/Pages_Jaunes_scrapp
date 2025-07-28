@@ -14,6 +14,19 @@ const delayPageChange = () => delay(800, 1200);
 
 // Nouvelle fonction pour extraire les informations d'une page
 async function extractInfoFromPage(page) {
+    // D'abord, essayer de cliquer sur le bouton "Afficher le N°" si nécessaire
+    try {
+        const showNumberBtn = await page.$('button[aria-label*="Afficher le N°"]');
+        if (showNumberBtn) {
+            await showNumberBtn.click();
+            console.log('Bouton "Afficher le N°" cliqué');
+            // Attendre que les numéros apparaissent
+            await page.waitForSelector('.coord-numero', { timeout: 3000 }).catch(() => {});
+        }
+    } catch (error) {
+        console.log('Pas de bouton "Afficher le N°" trouvé ou erreur lors du clic');
+    }
+
     const companyInfo = await page.evaluate(() => {
         const info = {
             name: '',
@@ -101,26 +114,6 @@ async function extractInfoFromPage(page) {
                     phoneNumbers.push(text);
                 }
             });
-        }
-
-        // Si pas de numéros trouvés, cliquer sur le bouton "Afficher le N°" avec le sélecteur précis
-        if (phoneNumbers.length === 0) {
-            const showNumberBtn = document.querySelector('button[aria-label*="Afficher le N°"]');
-            if (showNumberBtn) {
-                showNumberBtn.click();
-                console.log('Bouton "Afficher le N°" cliqué');
-
-                // Attendre un peu et chercher à nouveau
-                setTimeout(() => {
-                    const newPhoneElements = document.querySelectorAll('.coord-numero');
-                    newPhoneElements.forEach(el => {
-                        const text = el.innerText.trim();
-                        if (/^(0[1-9])(\d{8})$/.test(text.replace(/\s/g, ''))) {
-                            phoneNumbers.push(text);
-                        }
-                    });
-                }, 2000);
-            }
         }
 
         info.phone = phoneNumbers.join('; ');
@@ -258,6 +251,7 @@ async function extractInfoFromPage(page) {
 
 export default async function Pages_jaunes(object, city, fileName) {
     let pageNbr = 1;
+    let totalProcessed = 0; // Compteur global d'entreprises traitées
 
     if (!fileName.endsWith('.csv')) {
         fileName += '.csv';
@@ -276,7 +270,19 @@ export default async function Pages_jaunes(object, city, fileName) {
         append: true
     });
 
-    const browser = await puppeteer.launch({ headless: false, protocolTimeout: 60000 });
+    const browser = await puppeteer.launch({ 
+        headless: false, 
+        protocolTimeout: 120000, // Augmenter le timeout
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu'
+        ]
+    });
     
     try {
         const page = await browser.newPage();
@@ -358,9 +364,15 @@ export default async function Pages_jaunes(object, city, fileName) {
         await delayPageChange();
 
         // Nouvelle logique pour gérer la page de désambiguïsation
-        const isDisambiguationPage = await page.evaluate(() => {
-            return document.querySelector('h1.title-1') && document.querySelector('h1.title-1').innerText.includes('PagesJaunes vous propose');
-        });
+        let isDisambiguationPage = false;
+        try {
+            isDisambiguationPage = await page.evaluate(() => {
+                return document.querySelector('h1.title-1') && document.querySelector('h1.title-1').innerText.includes('PagesJaunes vous propose');
+            });
+        } catch (error) {
+            console.log('Erreur lors de la vérification de la page de désambiguïsation, continuation...');
+            isDisambiguationPage = false;
+        }
 
         if (isDisambiguationPage) {
             console.log('Page de désambiguïsation détectée, tentative de sélection de la ville...');
@@ -394,6 +406,9 @@ export default async function Pages_jaunes(object, city, fileName) {
         const allData = [];
         let hasNextPage = true;
 
+        // Taille du batch pour traiter les entreprises
+        const poolSize = 3; // nombre de fiches traitées par batch
+
         while (hasNextPage) {
             // Attendre que les résultats se chargent avec les nouveaux sélecteurs
             try {
@@ -410,13 +425,19 @@ export default async function Pages_jaunes(object, city, fileName) {
             console.log('Résultats de recherche chargés.');
 
             // Vérifier que nous sommes bien sur une page de résultats
-            const isResultsPage = await page.evaluate(() => {
-                return document.querySelector('.bi-list') !== null || 
-                       document.querySelector('li.bi') !== null ||
-                       document.querySelector('.search-results') !== null ||
-                       window.location.href.includes('/recherche') ||
-                       window.location.href.includes('/chercherlespros');
-            });
+            let isResultsPage = false;
+            try {
+                isResultsPage = await page.evaluate(() => {
+                    return document.querySelector('.bi-list') !== null || 
+                           document.querySelector('li.bi') !== null ||
+                           document.querySelector('.search-results') !== null ||
+                           window.location.href.includes('/recherche') ||
+                           window.location.href.includes('/chercherlespros');
+                });
+            } catch (error) {
+                console.log('Erreur lors de la vérification de la page de résultats, continuation...');
+                isResultsPage = true; // On continue par défaut
+            }
             
             if (!isResultsPage) {
                 console.log('Pas sur une page de résultats, arrêt du traitement.');
@@ -424,7 +445,9 @@ export default async function Pages_jaunes(object, city, fileName) {
             }
 
             // Récupérer les liens vers les pages de détail en utilisant les nouveaux sélecteurs
-            const detailLinks = await page.evaluate(() => {
+            let detailLinks = [];
+            try {
+                detailLinks = await page.evaluate(() => {
                 // Utiliser les nouveaux sélecteurs basés sur la structure HTML actuelle
                 const businessListings = document.querySelectorAll('li.bi');
                 console.log(`Nombre de listings d'entreprises trouvés: ${businessListings.length}`);
@@ -500,6 +523,10 @@ export default async function Pages_jaunes(object, city, fileName) {
                 console.log(`Liens uniques trouvés: ${uniqueLinks.length}`);
                 return uniqueLinks;
             });
+        } catch (error) {
+            console.log('Erreur lors de la récupération des liens, utilisation d\'un tableau vide');
+            detailLinks = [];
+        }
 
             console.log(`Trouvé ${detailLinks.length} entreprises uniques à traiter sur cette page.`);
             
@@ -531,46 +558,53 @@ export default async function Pages_jaunes(object, city, fileName) {
             
             console.log(`Liens valides trouvés: ${validDetailLinks.length}/${detailLinks.length}`);
 
-
-            const poolSize = 3; // nombre de fiches traitées en parallèle
-            const browserPages = []; // Pool de pages réutilisables
-
-            // Initialiser le pool de pages
-            for (let i = 0; i < poolSize; i++) {
-                browserPages.push(await browser.newPage());
-            }
-
+            // Traiter les entreprises en ouvrant des onglets depuis la page de liste
             for (let i = 0; i < validDetailLinks.length; i += poolSize) {
                 const batch = validDetailLinks.slice(i, i + poolSize);
+                const batchResults = [];
 
-                const batchResults = await Promise.all(batch.map(async (link, index) => {
-                    const detailPage = browserPages[index % poolSize]; // Réutiliser les pages du pool
+                // Traiter chaque entreprise du batch
+                for (let j = 0; j < batch.length; j++) {
+                    const link = batch[j];
                     try {
-                        console.log(`Traitement de l'entreprise via pool: ${link}`);
-                        await detailPage.goto(link, { waitUntil: 'domcontentloaded' });
+                        console.log(`Traitement de l'entreprise via onglet: ${link}`);
+                        
+                        // Ouvrir un nouvel onglet depuis la page de liste
+                        const newPage = await browser.newPage();
+                        
+                        // Naviguer vers la page de détail
+                        await newPage.goto(link, { waitUntil: 'domcontentloaded' });
                         await delayShort();
-                        const info = await extractInfoFromPage(detailPage); // Utiliser la fonction extraite
-                        console.log(`Entreprise traitée via pool : ${info.name}`);
-                        return info;
+                        
+                        // Extraire les informations
+                        const info = await extractInfoFromPage(newPage);
+                        console.log(`Entreprise traitée via onglet : ${info.name}`);
+                        batchResults.push(info);
+                        
+                        // Fermer l'onglet
+                        await newPage.close();
+                        
                     } catch (e) {
                         console.error(`Erreur lors du traitement du lien ${link}:`, e);
-                        return null;
+                        batchResults.push(null);
                     }
-                }));
+                }
 
-                allData.push(...batchResults.filter(Boolean));
+                const validResults = batchResults.filter(Boolean);
+                allData.push(...validResults);
+                totalProcessed += validResults.length;
+                console.log(`Total traité jusqu'ici: ${totalProcessed} entreprises`);
 
                 // Écrire les données par petits lots pour éviter la perte de données
-                if (allData.length >= 10) { // Réduire la taille du lot pour une écriture plus fréquente
-                    await csvWriter.writeRecords(allData.splice(0, allData.length)); // Écrire tout le lot collecté
-                    console.log(`Écriture de ${allData.length} enregistrements dans le CSV (batch).`);
+                if (allData.length >= 10) {
+                    const batchToWrite = allData.splice(0, allData.length);
+                    await csvWriter.writeRecords(batchToWrite);
+                    console.log(`Écriture de ${batchToWrite.length} enregistrements dans le CSV (batch).`);
                 }
             }
 
-            // Fermer les pages du pool
-            for (const page of browserPages) {
-                await page.close();
-            }
+            // Nous sommes toujours sur la page de liste, pas besoin de retour
+            console.log('Page de liste des résultats préservée.');
 
             // Ancien bloc de traitement des détails - SUPPRIMÉ
             /*
@@ -952,70 +986,57 @@ export default async function Pages_jaunes(object, city, fileName) {
             if (nextPageButton) {
                 console.log(`Bouton "Suivant" trouvé, texte: ${nextButtonText}`);
 
-                let clickSuccess = false;
-                let attempt = 0;
-                const maxAttempts = 3;
-                let previousUrl = await page.url();
-
-                while (!clickSuccess && attempt < maxAttempts) {
-                    attempt++;
-                    console.log(`Tentative de clic sur "Suivant" (tentative ${attempt}/${maxAttempts})...`);
+                try {
+                    console.log('Clic sur le bouton "Suivant"...');
+                    
+                    // Attendre que le bouton soit vraiment cliquable
+                    await page.waitForFunction(() => {
+                        const button = document.querySelector('#pagination-next');
+                        return button && !button.disabled && button.offsetParent !== null;
+                    }, { timeout: 10000 });
+                    
+                    // Utiliser une méthode de clic plus robuste
                     try {
-                        // Cliquer sur le bouton "Suivant"
-                        await nextPageButton.click();
-                        await delayPageChange(); // Délai réduit après le clic
-
-                        const currentUrlAfterClick = await page.url();
-                        if (currentUrlAfterClick !== previousUrl) {
-                            console.log(`Clic réussi, URL changée vers: ${currentUrlAfterClick}`);
-                            clickSuccess = true;
-                        } else {
-                            console.log('Clic échoué ou URL non changée, essai d\'une méthode alternative...');
-                            // Essayer de cliquer via JavaScript
-                            await page.evaluate(() => {
-                                const nextBtn = document.querySelector('#pagination-next, a[aria-label*="Suivant"], .pagination a:last-child');
-                                if (nextBtn) nextBtn.click();
-                            });
-                            await delayPageChange();
-                            if (await page.url() !== previousUrl) {
-                                clickSuccess = true;
-                                console.log('Clic alternatif réussi.');
-                            } else {
-                                // Dernière alternative: essayer de cliquer sur le lien via href
-                                const nextPageHref = await page.evaluate(() => {
-                                    const nextLink = document.querySelector('a[href*="page="], a[href*="p="]');
-                                    return nextLink ? nextLink.href : null;
-                                });
-                                
-                                if (nextPageHref) {
-                                    console.log(`Navigation directe vers: ${nextPageHref}`);
-                                    await page.goto(nextPageHref, { waitUntil: 'networkidle2' });
-                                    await delayPageChange();
-                                    clickSuccess = true;
-                                }
+                        await page.evaluate(() => {
+                            const button = document.querySelector('#pagination-next');
+                            if (button) {
+                                button.click();
                             }
-                        }
-                    } catch (err) {
-                        console.error(`Erreur lors du clic sur le bouton "Suivant" : ${err.message}`);
+                        });
+                    } catch (error) {
+                        console.log('Clic échoué, tentative de navigation directe...');
+                        // Si le clic échoue, essayer de naviguer directement vers la page suivante
+                        const currentUrl = page.url();
+                        const urlParams = new URLSearchParams(currentUrl.split('?')[1] || '');
+                        const currentPage = parseInt(urlParams.get('page') || '1');
+                        const nextPage = currentPage + 1;
+                        
+                        const nextPageUrl = `${currentUrl.split('?')[0]}?${urlParams.toString().replace(/page=\d+/, `page=${nextPage}`)}`;
+                        await page.goto(nextPageUrl, { waitUntil: 'domcontentloaded' });
                     }
-                }
+                    
+                    await delayPageChange();
 
-                if (clickSuccess) {
                     pageNbr++;
                     console.log(`Passage à la page suivante... ${pageNbr}`);
 
                     // Attendre que les nouveaux résultats se chargent
-                    await page.waitForSelector('li.bi', { visible: true, timeout: 15000 }); // Timeout réduit
+                    await page.waitForSelector('li.bi', { visible: true, timeout: 15000 });
                     console.log('Nouveaux résultats chargés.');
 
-                    // Vérifier que nous sommes bien sur une nouvelle page (numéro de page)
-                    const newPageNumberInfo = await page.evaluate(() => {
-                        const pageInfo = document.querySelector('.pagination-info'); // Ou un sélecteur plus précis pour "Page X/Y"
-                        if (pageInfo) {
-                            return pageInfo.textContent;
-                        }
-                        return null;
-                    });
+                    // Vérifier que nous sommes bien sur une nouvelle page
+                    let newPageNumberInfo = null;
+                    try {
+                        newPageNumberInfo = await page.evaluate(() => {
+                            const pageInfo = document.querySelector('.pagination-info');
+                            if (pageInfo) {
+                                return pageInfo.textContent;
+                            }
+                            return null;
+                        });
+                    } catch (error) {
+                        console.log('Erreur lors de la vérification du numéro de page');
+                    }
 
                     if (newPageNumberInfo) {
                         console.log(`Page actuelle affichée: ${newPageNumberInfo}`);
@@ -1023,10 +1044,13 @@ export default async function Pages_jaunes(object, city, fileName) {
                         console.log('Numéro de page non trouvé après navigation.');
                     }
 
-                } else {
-                    console.log('Impossible de cliquer sur le bouton "Suivant" après plusieurs tentatives. Fin du traitement.');
+                } catch (err) {
+                    console.error(`Erreur lors du clic sur le bouton "Suivant" : ${err.message}`);
                     hasNextPage = false;
                 }
+            } else {
+                console.log('Aucun bouton "Suivant" visible trouvé. Fin du traitement.');
+                hasNextPage = false;
             }
         }
 
@@ -1035,7 +1059,10 @@ export default async function Pages_jaunes(object, city, fileName) {
             console.log('Écriture des derniers enregistrements dans le CSV.');
         }
 
+
+
         console.log(`Données collectées et écrites dans le fichier ${fileName} avec succès.`);
+        console.log(`Total final d'entreprises traitées: ${totalProcessed}`);
 
     } catch (error) {
         console.error('Erreur dans le processus :', error);
