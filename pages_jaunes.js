@@ -445,79 +445,90 @@ export default async function Pages_jaunes(object, city, fileName) {
             }
 
             // Vérifier s'il y a une page suivante
-            const nextPageExists = await page.$('#pagination-next');
-            if (nextPageExists) {
-                // Vérifier que le bouton est cliquable
-                const isClickable = await page.evaluate(() => {
-                    const nextButton = document.querySelector('#pagination-next');
-                    if (nextButton) {
-                        const style = window.getComputedStyle(nextButton);
-                        return style.pointerEvents !== 'none' && 
-                               !nextButton.disabled && 
-                               nextButton.offsetParent !== null;
-                    }
-                    return false;
-                });
+            const nextPageButton = await page.$('#pagination-next');
+            if (nextPageButton) {
+                const nextButtonText = await page.evaluate(el => el.innerText, nextPageButton);
                 
-                if (!isClickable) {
-                    console.log('Bouton "Suivant" trouvé mais non cliquable.');
-                    hasNextPage = false;
-                    break;
-                }
-                pageNbr++;
-                console.log(`Passage à la page suivante... ${pageNbr}`);
-                await delay(2000, 4000);
-                try {
-                    // Cliquer sur le bouton "Suivant"
-                    await page.click('#pagination-next');
-                    console.log('Clic sur le bouton "Suivant" effectué.');
-                    await delay(3000, 5000);
-                    
-                    // Si le clic n'a pas fonctionné, essayer une méthode alternative
-                    const currentUrlBefore = await page.url();
-                    await page.evaluate(() => {
-                        const nextButton = document.querySelector('#pagination-next');
-                        if (nextButton) {
-                            nextButton.click();
+                if (nextButtonText.includes('Suivant')) {
+                    console.log(`Bouton "Suivant" trouvé, texte: ${nextButtonText}`);
+
+                    let clickSuccess = false;
+                    let attempt = 0;
+                    const maxAttempts = 3;
+                    let previousUrl = await page.url();
+
+                    while (!clickSuccess && attempt < maxAttempts) {
+                        attempt++;
+                        console.log(`Tentative de clic sur "Suivant" (tentative ${attempt}/${maxAttempts})...`);
+                        try {
+                            // Cliquer sur le bouton "Suivant"
+                            await page.click('#pagination-next');
+                            await delay(3000, 5000); // Délai plus long après le clic
+
+                            const currentUrlAfterClick = await page.url();
+                            if (currentUrlAfterClick !== previousUrl) {
+                                console.log(`Clic réussi, URL changée vers: ${currentUrlAfterClick}`);
+                                clickSuccess = true;
+                            } else {
+                                console.log('Clic échoué ou URL non changée, essai d\'une méthode alternative...');
+                                // Essayer de cliquer via JavaScript
+                                await page.evaluate(() => {
+                                    const nextBtn = document.querySelector('#pagination-next');
+                                    if (nextBtn) nextBtn.click();
+                                });
+                                await delay(3000, 5000);
+                                if (await page.url() !== previousUrl) {
+                                    clickSuccess = true;
+                                    console.log('Clic alternatif réussi.');
+                                } else {
+                                    // Dernière alternative: clic sur le span à l'intérieur
+                                    await page.click('#pagination-next span.value');
+                                    await delay(3000, 5000);
+                                    if (await page.url() !== previousUrl) {
+                                        clickSuccess = true;
+                                        console.log('Clic sur span.value réussi.');
+                                    }
+                                }
+                            }
+                        } catch (err) {
+                            console.error(`Erreur lors du clic sur le bouton "Suivant" : ${err.message}`);
+                            // Ne pas casser la boucle immédiatement, essayer une autre méthode ou tentative
                         }
-                    });
-                    await delay(2000, 3000);
-                    
-                    const currentUrlAfter = await page.url();
-                    if (currentUrlBefore === currentUrlAfter) {
-                        console.log('Le clic n\'a pas changé l\'URL, tentative alternative...');
-                        // Essayer de cliquer sur le span à l'intérieur du bouton
-                        await page.click('#pagination-next span.value');
-                        await delay(2000, 3000);
                     }
-                    
-                    // Vérifier que la page a bien changé
-                    const currentUrl = await page.url();
-                    console.log(`URL actuelle après clic: ${currentUrl}`);
-                    
-                    // Attendre que les nouveaux résultats se chargent
-                    await page.waitForSelector('a.bi-denomination.pj-link h3', { visible: true, timeout: 15000 });
-                    console.log('Nouveaux résultats chargés.');
-                    
-                    // Vérifier que nous sommes bien sur une nouvelle page
-                    const newPageNumber = await page.evaluate(() => {
-                        const pageInfo = document.querySelector('.pagination-info');
-                        if (pageInfo) {
-                            return pageInfo.textContent;
+
+                    if (clickSuccess) {
+                        pageNbr++;
+                        console.log(`Passage à la page suivante... ${pageNbr}`);
+                        
+                        // Attendre que les nouveaux résultats se chargent
+                        await page.waitForSelector('a.bi-denomination.pj-link h3', { visible: true, timeout: 20000 }); // Timeout plus long
+                        console.log('Nouveaux résultats chargés.');
+                        
+                        // Vérifier que nous sommes bien sur une nouvelle page (numéro de page)
+                        const newPageNumberInfo = await page.evaluate(() => {
+                            const pageInfo = document.querySelector('.pagination-info'); // Ou un sélecteur plus précis pour "Page X/Y"
+                            if (pageInfo) {
+                                return pageInfo.textContent;
+                            }
+                            return null;
+                        });
+                        
+                        if (newPageNumberInfo) {
+                            console.log(`Page actuelle affichée: ${newPageNumberInfo}`);
+                        } else {
+                            console.log('Numéro de page non trouvé après navigation.');
                         }
-                        return null;
-                    });
-                    
-                    if (newPageNumber) {
-                        console.log(`Page actuelle: ${newPageNumber}`);
+
+                    } else {
+                        console.log('Impossible de cliquer sur le bouton "Suivant" après plusieurs tentatives. Fin du traitement.');
+                        hasNextPage = false;
                     }
-                    
-                } catch (err) {
-                    console.error('Erreur lors du passage à la page suivante :', err);
+                } else {
+                    console.log('Bouton "Suivant" trouvé mais désactivé ou texte incorrect. Fin du traitement.');
                     hasNextPage = false;
                 }
             } else {
-                console.log('Aucune page suivante trouvée, fin du traitement.');
+                console.log('Aucun bouton "Suivant" trouvé. Fin du traitement.');
                 hasNextPage = false;
             }
         }
