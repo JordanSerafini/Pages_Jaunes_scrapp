@@ -148,9 +148,9 @@ export default async function Pages_jaunes(object, city, fileName) {
         let hasNextPage = true;
 
         while (hasNextPage) {
-            // Attendre que les résultats se chargent avec plusieurs sélecteurs possibles
+            // Attendre que les résultats se chargent avec les nouveaux sélecteurs
             try {
-                await page.waitForSelector('a.bi-denomination.pj-link h3', { visible: true, timeout: 150000 });
+                await page.waitForSelector('li.bi', { visible: true, timeout: 150000 });
             } catch (error) {
                 try {
                     await page.waitForSelector('.bi-denomination', { visible: true, timeout: 150000 });
@@ -166,8 +166,10 @@ export default async function Pages_jaunes(object, city, fileName) {
             // Vérifier que nous sommes bien sur une page de résultats
             const isResultsPage = await page.evaluate(() => {
                 return document.querySelector('.bi-list') !== null || 
+                       document.querySelector('li.bi') !== null ||
                        document.querySelector('.search-results') !== null ||
-                       window.location.href.includes('/recherche');
+                       window.location.href.includes('/recherche') ||
+                       window.location.href.includes('/chercherlespros');
             });
             
             if (!isResultsPage) {
@@ -175,10 +177,10 @@ export default async function Pages_jaunes(object, city, fileName) {
                 break;
             }
 
-            // Récupérer les liens vers les pages de détail en utilisant les sélecteurs précis
+            // Récupérer les liens vers les pages de détail en utilisant les nouveaux sélecteurs
             const detailLinks = await page.evaluate(() => {
-                // Utiliser le sélecteur précis pour les blocs d'entreprises
-                const businessListings = document.querySelectorAll('section#listResults ul > li.bi-generic.bi-propay');
+                // Utiliser les nouveaux sélecteurs basés sur la structure HTML actuelle
+                const businessListings = document.querySelectorAll('li.bi');
                 console.log(`Nombre de listings d'entreprises trouvés: ${businessListings.length}`);
                 
                 const links = [];
@@ -187,14 +189,14 @@ export default async function Pages_jaunes(object, city, fileName) {
                     // Chercher le lien principal dans chaque listing
                     let mainLink = null;
                     
-                    // Essayer plusieurs sélecteurs pour trouver le lien principal
+                    // Nouveaux sélecteurs basés sur la structure HTML actuelle
                     const linkSelectors = [
                         'a.bi-denomination.pj-link',
-                        '.bi-clic-mobile a[href*="/pros/"]',
+                        '.bi-header-title a',
                         '.bi-content a[href*="/pros/"]',
                         'a[href*="/pros/"]',
-                        '.bi-denomination a',
-                        '.bi-header-title a'
+                        '.bi-clic-mobile a',
+                        'a[href*="detail"]'
                     ];
                     
                     for (const selector of linkSelectors) {
@@ -206,7 +208,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                         }
                     }
                     
-                    // Si aucun lien trouvé avec les sélecteurs, essayer de cliquer sur le div bi-clic-mobile
+                    // Si aucun lien trouvé, essayer de cliquer sur le div cliquable
                     if (!mainLink) {
                         const clickableDiv = listing.querySelector('.bi-clic-mobile');
                         if (clickableDiv) {
@@ -218,6 +220,16 @@ export default async function Pages_jaunes(object, city, fileName) {
                                     mainLink = window.location.href;
                                 }
                             }, 100);
+                        }
+                    }
+                    
+                    // Dernière tentative : chercher par l'ID de l'élément
+                    if (!mainLink) {
+                        const listingId = listing.id;
+                        if (listingId && listingId.startsWith('bi-')) {
+                            const idNumber = listingId.replace('bi-', '');
+                            mainLink = `https://www.pagesjaunes.fr/pros/detail?code_etablissement=${idNumber}`;
+                            console.log(`Lien généré par ID pour listing ${index + 1}: ${mainLink}`);
                         }
                     }
                     
@@ -307,6 +319,34 @@ export default async function Pages_jaunes(object, city, fileName) {
                                 await new Promise(resolve => setTimeout(resolve, 1000));
                             }
                         }
+                        
+                        // Si pas de div cliquable, essayer de cliquer sur le h3 ou le lien principal
+                        if (!clickableDiv) {
+                            const h3Element = listing.querySelector('h3');
+                            const linkElement = listing.querySelector('a.bi-denomination.pj-link');
+                            
+                            if (h3Element) {
+                                h3Element.click();
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                                
+                                if (window.location.href !== currentUrl && window.location.href.includes('/pros/')) {
+                                    links.push(window.location.href);
+                                    console.log(`Lien trouvé via h3: ${window.location.href}`);
+                                    window.history.back();
+                                    await new Promise(resolve => setTimeout(resolve, 1000));
+                                }
+                            } else if (linkElement) {
+                                linkElement.click();
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                                
+                                if (window.location.href !== currentUrl && window.location.href.includes('/pros/')) {
+                                    links.push(window.location.href);
+                                    console.log(`Lien trouvé via lien principal: ${window.location.href}`);
+                                    window.history.back();
+                                    await new Promise(resolve => setTimeout(resolve, 1000));
+                                }
+                            }
+                        }
                     }
                     
                     return links;
@@ -353,7 +393,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                         continue;
                     }
 
-                    // Récupérer les informations de l'entreprise
+                    // Récupérer les informations de l'entreprise avec les sélecteurs précis
                     const companyInfo = await page.evaluate(() => {
                         const info = {
                             name: '',
@@ -364,35 +404,18 @@ export default async function Pages_jaunes(object, city, fileName) {
                             additionalInfo: ''
                         };
 
-                        // Nom de l'entreprise
-                        const nameSelectors = [
-                            'h3.bi-denomination',
-                            '.bi-denomination h3',
-                            'h1',
-                            '.company-name',
-                            '.denomination',
-                            '.business-name',
-                            'h2.denomination',
-                            '.pj-denomination',
-                            '.bi-denomination',
-                            '.bi-header-title h3'
-                        ];
-                        
-                        for (const selector of nameSelectors) {
-                            const nameElement = document.querySelector(selector);
-                            if (nameElement) {
-                                const name = nameElement.innerText.trim();
-                                // Vérifier que ce n'est pas un nom générique
-                                if (name && 
-                                    !name.includes('à') && 
-                                    !name.includes('Bâtiment') &&
-                                    !name.includes('PagesJaunes') &&
-                                    name.length > 3 &&
-                                    name.length < 100) {
-                                    info.name = name;
-                                    console.log(`Nom trouvé avec le sélecteur ${selector}: ${name}`);
-                                    break;
-                                }
+                        // Nom de l'entreprise - utiliser le sélecteur précis
+                        const nameElement = document.querySelector('div.bi-content h3');
+                        if (nameElement) {
+                            const name = nameElement.innerText.trim();
+                            if (name && 
+                                !name.includes('à') && 
+                                !name.includes('Bâtiment') &&
+                                !name.includes('PagesJaunes') &&
+                                name.length > 3 &&
+                                name.length < 100) {
+                                info.name = name;
+                                console.log(`Nom trouvé: ${name}`);
                             }
                         }
                         
@@ -413,32 +436,30 @@ export default async function Pages_jaunes(object, city, fileName) {
                             }
                         }
 
-                        // Adresse
-                        const addressSelectors = [
-                            'a[title="Voir le plan"]',
-                            '.bi-adresse',
-                            '.address',
-                            '[class*="adresse"]',
-                            '.bi-header-address',
-                            '.address-info',
-                            'span[class*="adresse"]',
-                            '.location-info'
-                        ];
+                        // Adresse - utiliser le sélecteur précis
+                        const addressElement = document.querySelector('div.bi-content > div:nth-child(2)');
+                        if (addressElement) {
+                            let addressText = addressElement.innerText.trim();
+                            addressText = addressText.replace('Voir le plan', '').trim();
+                            if (addressText && addressText.length > 5) {
+                                info.address = addressText;
+                                console.log(`Adresse trouvée: ${addressText}`);
+                            }
+                        }
                         
-                        for (const selector of addressSelectors) {
-                            const addressElement = document.querySelector(selector);
-                            if (addressElement) {
-                                let addressText = addressElement.innerText.trim();
-                                addressText = addressText.replace('Voir le plan', '').trim();
+                        // Si pas d'adresse trouvée, essayer le lien "Voir le plan"
+                        if (!info.address) {
+                            const planLink = document.querySelector('a[href*="voir-le-plan"]');
+                            if (planLink) {
+                                const addressText = planLink.innerText.trim();
                                 if (addressText && addressText.length > 5) {
                                     info.address = addressText;
-                                    console.log(`Adresse trouvée avec le sélecteur ${selector}: ${addressText}`);
-                                    break;
+                                    console.log(`Adresse trouvée via lien plan: ${addressText}`);
                                 }
                             }
                         }
 
-                        // Numéros de téléphone
+                        // Numéros de téléphone - utiliser le sélecteur précis pour le bouton
                         const phoneNumbers = [];
                         
                         // Chercher les numéros déjà affichés
@@ -462,61 +483,46 @@ export default async function Pages_jaunes(object, city, fileName) {
                             });
                         }
 
-                        // Si pas de numéros trouvés, cliquer sur les boutons "Afficher le N°"
+                        // Si pas de numéros trouvés, cliquer sur le bouton "Afficher le N°" avec le sélecteur précis
                         if (phoneNumbers.length === 0) {
-                            const showButtons = document.querySelectorAll('button.button.btn.btn_primary.btn_full_mob.btn_tel.normal-button, span.value');
-                            showButtons.forEach(button => {
-                                if (button.textContent.includes('Afficher le N°')) {
-                                    button.click();
-                                }
-                            });
-                            
-                            // Attendre un peu et chercher à nouveau
-                            setTimeout(() => {
-                                const newPhoneElements = document.querySelectorAll('.coord-numero, .number-contact span');
-                                newPhoneElements.forEach(el => {
-                                    const text = el.innerText.trim();
-                                    if (/^(0[1-9])(\d{8})$/.test(text.replace(/\s/g, ''))) {
-                                        phoneNumbers.push(text);
-                                    }
-                                });
-                            }, 2000);
+                            const showNumberBtn = document.querySelector('button[aria-label*="Afficher le N°"]');
+                            if (showNumberBtn) {
+                                showNumberBtn.click();
+                                console.log('Bouton "Afficher le N°" cliqué');
+                                
+                                // Attendre un peu et chercher à nouveau
+                                setTimeout(() => {
+                                    const newPhoneElements = document.querySelectorAll('.coord-numero');
+                                    newPhoneElements.forEach(el => {
+                                        const text = el.innerText.trim();
+                                        if (/^(0[1-9])(\d{8})$/.test(text.replace(/\s/g, ''))) {
+                                            phoneNumbers.push(text);
+                                        }
+                                    });
+                                }, 2000);
+                            }
                         }
 
                         info.phone = phoneNumbers.join('; ');
 
-                        // Site web - récupération directe depuis le texte affiché
-                        const websiteElement = document.querySelector('a.SITE_EXTERNE span.value');
+                        // Site web - utiliser le sélecteur précis
+                        const websiteElement = document.querySelector('a[href*="http"]:not([href*="pagesjaunes"])');
                         if (websiteElement) {
-                            const text = websiteElement.innerText.trim();
-                            if (text && text.includes('www')) {
-                                info.website = text;
-                                console.log(`[DEBUG Site Web] Site web trouvé via a.SITE_EXTERNE span.value: ${text}`);
-                            } else {
-                                console.log(`[DEBUG Site Web] a.SITE_EXTERNE span.value trouvé mais contenu invalide: '${text}'`);
+                            const href = websiteElement.href;
+                            if (href && href.includes('www')) {
+                                info.website = href;
+                                console.log(`Site web trouvé: ${href}`);
                             }
-                        } else {
-                            console.log('[DEBUG Site Web] a.SITE_EXTERNE span.value non trouvé.');
                         }
-
-                        // Fallback: chercher des liens génériques (moins précis)
+                        
+                        // Fallback: chercher dans le texte affiché
                         if (!info.website) {
-                            console.log('[DEBUG Site Web] Tentative de fallback pour le site web...');
-                            const genericWebsiteSelectors = [
-                                'a[href*="http"]',
-                                '.website-link'
-                            ];
-                            for (const selector of genericWebsiteSelectors) {
-                                const genericWebsiteElement = document.querySelector(selector);
-                                if (genericWebsiteElement) {
-                                    const href = genericWebsiteElement.href || genericWebsiteElement.innerText.trim();
-                                    if (href && href.includes('www')) {
-                                        info.website = href;
-                                        console.log(`[DEBUG Site Web] Site web trouvé via fallback ${selector}: ${href}`);
-                                        break;
-                                    }
-                                } else {
-                                    console.log(`[DEBUG Site Web] Fallback sélecteur ${selector} non trouvé.`);
+                            const websiteTextElement = document.querySelector('a.SITE_EXTERNE span.value');
+                            if (websiteTextElement) {
+                                const text = websiteTextElement.innerText.trim();
+                                if (text && text.includes('www')) {
+                                    info.website = text;
+                                    console.log(`Site web trouvé via texte: ${text}`);
                                 }
                             }
                         }
@@ -530,15 +536,37 @@ export default async function Pages_jaunes(object, city, fileName) {
             }
                         }
 
-                        // Informations supplémentaires
+                        // Informations supplémentaires - utiliser le sélecteur précis
                         const additionalInfo = [];
-                        const infoElements = document.querySelectorAll('.bi-description, .company-description, .services');
-                        infoElements.forEach(el => {
-                            const text = el.innerText.trim();
+                        
+                        // Description de l'entreprise
+                        const descElement = document.querySelector('.bi-desc');
+                        if (descElement) {
+                            const text = descElement.innerText.trim();
                             if (text) {
-                                additionalInfo.push(text);
+                                additionalInfo.push(`Description: ${text}`);
                             }
-                        });
+                        }
+                        
+                        // Type d'activité
+                        const activityElement = document.querySelector('.bi-activity-unit-small');
+                        if (activityElement) {
+                            const text = activityElement.innerText.trim();
+                            if (text) {
+                                additionalInfo.push(`Activité: ${text}`);
+                            }
+                        }
+                        
+                        // Avis et étoiles
+                        const starsElement = document.querySelector('.bi-stars .rating');
+                        const avisElement = document.querySelector('.bi-stars .nbAvis');
+                        if (starsElement || avisElement) {
+                            const stars = starsElement ? starsElement.innerText.trim() : '';
+                            const avis = avisElement ? avisElement.innerText.trim() : '';
+                            if (stars || avis) {
+                                additionalInfo.push(`Avis: ${stars} ${avis}`);
+                            }
+                        }
                         
                         info.additionalInfo = additionalInfo.join(' | ');
 
@@ -629,7 +657,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                         console.log(`Passage à la page suivante... ${pageNbr}`);
                         
                         // Attendre que les nouveaux résultats se chargent
-                        await page.waitForSelector('a.bi-denomination.pj-link h3', { visible: true, timeout: 20000 }); // Timeout plus long
+                        await page.waitForSelector('li.bi', { visible: true, timeout: 20000 }); // Timeout plus long
                         console.log('Nouveaux résultats chargés.');
                         
                         // Vérifier que nous sommes bien sur une nouvelle page (numéro de page)
