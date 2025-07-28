@@ -15,7 +15,11 @@ const processCsv = async (inputFilePath, outputFilePath) => {
             { id: 'telephone', title: 'Téléphone' },
             { id: 'site_web', title: 'Site Web' },
             { id: 'email', title: 'Email' },
-            { id: 'new_email', title: 'Nouvel Email Trouvé' }
+            { id: 'new_email', title: 'Nouvel Email Trouvé' },
+            { id: 'html_length', title: 'Html Length' },
+            { id: 'nb_results', title: 'Nb Results' },
+            { id: 'timestamp', title: 'Timestamp' },
+            { id: 'error', title: 'Error' }
         ]
     });
 
@@ -53,12 +57,11 @@ const processCsv = async (inputFilePath, outputFilePath) => {
 
                 const query = `contact email ${nom_entreprise} ${details_entreprise}`;
                 console.log(`Recherche d'email pour : ${nom_entreprise}`);
-                const emailsFound = await fetchGoogleSearchHTML(query);
-                await new Promise(resolve => setTimeout(resolve, 2000)); // Délai de 2 secondes après chaque recherche
+                const searchResult = await fetchGoogleSearchHTML(query);
                 
                 let newEmail = 'Email non trouvé';
-                if (emailsFound && emailsFound.length > 0) {
-                    newEmail = emailsFound.join('; ');
+                if (searchResult.emails && searchResult.emails.length > 0) {
+                    newEmail = searchResult.emails.join('; ');
                     console.log(`Emails trouvés pour ${nom_entreprise}: ${newEmail}`);
                 } else {
                     console.log(`Aucun email trouvé pour ${nom_entreprise}.`);
@@ -70,7 +73,11 @@ const processCsv = async (inputFilePath, outputFilePath) => {
                     telephone,
                     site_web,
                     email: existing_email,
-                    new_email: newEmail
+                    new_email: newEmail,
+                    html_length: searchResult.htmlLength,
+                    nb_results: searchResult.nbResults,
+                    timestamp: searchResult.timestamp,
+                    error: searchResult.error || ''
                 });
             }
 
