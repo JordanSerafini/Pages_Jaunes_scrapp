@@ -48,7 +48,7 @@ async function extractInfoFromPage(page) {
                 !name.includes('PagesJaunes') &&
                 name.length > 3 &&
                 name.length < 100 &&
-                !/^\d+$/.test(name)) { // Vérifier que ce n'est pas juste des chiffres
+                !/^\\d+$/.test(name)) { // Vérifier que ce n'est pas juste des chiffres
                 info.name = name;
                 console.log(`Nom trouvé: ${name}`);
             }
@@ -63,7 +63,7 @@ async function extractInfoFromPage(page) {
                 const potentialName = decodeURIComponent(urlNameMatch[1]).replace(/\+/g, ' ').trim();
                 // Ensure it's not a numeric ID or common path segment
                 if (potentialName &&
-                    !/^\d+$/.test(potentialName) && // Not just numbers
+                    !/^\\d+$/.test(potentialName) && // Not just numbers
                     !potentialName.includes('code_etablissement=') &&
                     !potentialName.includes('detail') &&
                     !potentialName.includes('pros') &&
@@ -76,17 +76,17 @@ async function extractInfoFromPage(page) {
 
             // Fallback to detail?code_etablissement= part if no better name from URL path
             if (!info.name) {
-                const detailMatch = url.match(/detail\?.*?=([^&]+)/);
+                const detailMatch = url.match(/detail\\?.*?=([^&]+)/);
                 if (detailMatch && detailMatch[1]) {
                     const potentialParamValue = decodeURIComponent(detailMatch[1]).replace(/\+/g, ' ').trim();
 
                     // Check if the potential name from URL parameter is mostly numeric or very short/generic.
-                    const digitCount = (potentialParamValue.match(/\d/g) || []).length;
+                    const digitCount = (potentialParamValue.match(/\\d/g) || []).length;
                     // If it contains more than 50% digits and is longer than 5 chars, or is purely numeric and long enough, it's likely an ID.
-                    if (potentialParamValue.length > 5 && (digitCount / potentialParamValue.length > 0.5 || /^\d{6,}$/.test(potentialParamValue))) {
+                    if (potentialParamValue.length > 5 && (digitCount / potentialParamValue.length > 0.5 || /^\\d{6,}$/.test(potentialParamValue))) {
                          console.log(`Potential name "${potentialParamValue}" from URL param looks like an ID, skipping.`);
                          // Do not set info.name in this case
-                    } else if (potentialParamValue && !/^\d+$/.test(potentialParamValue) && potentialParamValue.length > 3) { // Still keep the original check for purely numeric and ensure length
+                    } else if (potentialParamValue && !/^\\d+$/.test(potentialParamValue) && potentialParamValue.length > 3) { // Still keep the original check for purely numeric and ensure length
                         info.name = potentialParamValue;
                         console.log(`Nom trouvé via URL param: ${info.name}`);
                     }
@@ -108,8 +108,8 @@ async function extractInfoFromPage(page) {
 
         // Final sanity check for name: if it's still a number or too generic after all attempts, reset it
         if (info.name) {
-            const normalizedFinalName = info.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
-            if (normalizedFinalName.length < 4 || /^\d+$/.test(normalizedFinalName) || normalizedFinalName.includes('pagesjaunes')) {
+            const normalizedFinalName = info.name.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
+            if (normalizedFinalName.length < 4 || /^\\d+$/.test(normalizedFinalName) || normalizedFinalName.includes('pagesjaunes')) {
                 console.log(`Nom final "${info.name}" seems generic/numeric after normalization, resetting.`);
                 info.name = ''; // Reset to empty string so 'Nom non trouvé' can be applied by cleanData
             }
@@ -156,7 +156,7 @@ async function extractInfoFromPage(page) {
             const elements = document.querySelectorAll(selector);
             elements.forEach(el => {
                 const text = el.innerText.trim();
-                if (/^(0[1-9])(\d{8})$/.test(text.replace(/\s/g, ''))) {
+                if (/^(0[1-9])(\\d{8})$/.test(text.replace(/\s/g, ''))) {
                     phoneNumbers.push(text);
                 }
             });
@@ -278,10 +278,10 @@ async function extractInfoFromPage(page) {
     const cleanData = (text) => {
         if (!text) return '';
         return text
-            .replace(/\n/g, ' ') // Remplacer les retours à la ligne par des espaces
-            .replace(/\r/g, ' ') // Remplacer les retours chariot par des espaces
-            .replace(/\t/g, ' ') // Remplacer les tabulations par des espaces
-            .replace(/\s+/g, ' ') // Remplacer les espaces multiples par un seul espace
+            .replace(/\\n/g, ' ') // Remplacer les retours à la ligne par des espaces
+            .replace(/\\r/g, ' ') // Remplacer les retours chariot par des espaces
+            .replace(/\\t/g, ' ') // Remplacer les tabulations par des espaces
+            .replace(/\\s+/g, ' ') // Remplacer les espaces multiples par un seul espace
             .trim(); // Supprimer les espaces en début et fin
     };
 
@@ -308,39 +308,14 @@ export default async function Pages_jaunes(object, city, fileName) {
     const processedCompanies = new Set();
     const processedUrls = new Set();
 
-    // let previousLinksHash = ''; // Variable pour détecter les boucles de pagination
-    let totalResults = 0; // Déclarer totalResults ici, si ce n'est pas déjà fait
-
-    // Charger les entreprises déjà traitées depuis le fichier CSV existant
-    try {
-        const csvPath = path.join(__dirname, fileName);
-        if (fs.existsSync(csvPath)) {
-            const csvContent = fs.readFileSync(csvPath, 'utf8');
-            const lines = csvContent.split('\n').filter(line => line.trim());
-
-            // Ignorer l'en-tête et charger les noms d'entreprises normalisés
-            for (let i = 1; i < lines.length; i++) {
-                const columns = lines[i].split(',');
-                if (columns[0] && columns[0].trim()) {
-                    const normalizedName = normalizeCompanyName(columns[0].trim());
-                    processedCompanies.add(normalizedName);
-                }
-            }
-
-            console.log(`Chargement de ${processedCompanies.size} entreprises déjà traitées depuis le fichier existant.`);
-        }
-    } catch (error) {
-        console.log('Erreur lors du chargement des entreprises existantes:', error.message);
-    }
-
     // Fonction pour normaliser le nom d'entreprise (supprimer accents, espaces, etc.)
-    const normalizeCompanyName = (name, address = '') => {
+    function normalizeCompanyName(name, address = '') {
         let normalized = name
             .toLowerCase()
             .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '') // Supprimer les accents
-            .replace(/[^a-z0-9\s]/g, '') // Garder lettres, chiffres et espaces
-            .replace(/\s+/g, ' ') // Remplacer les espaces multiples par un seul
+            .replace(/[\\u0300-\\u036f]/g, '') // Supprimer les accents
+            .replace(/[^a-z0-9\\s]/g, '') // Garder lettres, chiffres et espaces
+            .replace(/\\s+/g, ' ') // Remplacer les espaces multiples par un seul
             .trim();
 
         // Si le nom est très court ou générique, inclure une partie de l'adresse
@@ -348,13 +323,13 @@ export default async function Pages_jaunes(object, city, fileName) {
             const normalizedAddress = address
                 .toLowerCase()
                 .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .replace(/[^a-z0-9\s]/g, '')
-                .replace(/\s+/g, ' ')
+                .replace(/[\\u0300-\\u036f]/g, '')
+                .replace(/[^a-z0-9\\s]/g, '')
+                .replace(/\\s+/g, ' ')
                 .trim();
 
             // Extraire le code postal ou la ville de l'adresse si disponible
-            const postcodeMatch = normalizedAddress.match(/\b\\d{5}\b/); // Code postal
+            const postcodeMatch = normalizedAddress.match(/\\b\\d{5}\\b/); // Code postal
             const cityMatch = normalizedAddress.match(/\\b([a-z-]+)\\s+\\d{5}\\b/); // Ville avant code postal
 
             let addressPart = '';
@@ -370,6 +345,31 @@ export default async function Pages_jaunes(object, city, fileName) {
         }
         return normalized;
     };
+
+
+    let totalResults = 0; // Déclarer totalResults ici, si ce n'est pas déjà fait
+
+    // Charger les entreprises déjà traitées depuis le fichier CSV existant
+    try {
+        const csvPath = path.join(__dirname, fileName);
+        if (fs.existsSync(csvPath)) {
+            const csvContent = fs.readFileSync(csvPath, 'utf8');
+            const lines = csvContent.split('\\n').filter(line => line.trim());
+
+            // Ignorer l'en-tête et charger les noms d'entreprises normalisés
+            for (let i = 1; i < lines.length; i++) {
+                const columns = lines[i].split(',');
+                if (columns[0] && columns[0].trim()) {
+                    const normalizedName = normalizeCompanyName(columns[0].trim());
+                    processedCompanies.add(normalizedName);
+                }
+            }
+
+            console.log(`Chargement de ${processedCompanies.size} entreprises déjà traitées depuis le fichier existant.`);
+        }
+    } catch (error) {
+        console.log('Erreur lors du chargement des entreprises existantes:', error.message);
+    }
 
     if (!fileName.endsWith('.csv')) {
         fileName += '.csv';
@@ -405,7 +405,7 @@ export default async function Pages_jaunes(object, city, fileName) {
     try {
         const page = await browser.newPage();
 
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36');
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0');
         console.log('Accès à la page de PagesJaunes...');
         await page.goto('https://www.pagesjaunes.fr/', { waitUntil: 'domcontentloaded' });
 
@@ -419,7 +419,7 @@ export default async function Pages_jaunes(object, city, fileName) {
             console.log('Attente de la popup de cookies...');
 
             // Attendre que la page soit complètement chargée
-            await page.waitForFunction(() => document.readyState === 'complete', { timeout: 25000 }); // Timeout ajouté
+            await page.waitForFunction(() => document.readyState === 'complete', { timeout: 25000 }); // Timeout augmenté
 
             // Attendre un peu moins pour que les scripts se chargent
             await delay(100, 200); // Réduit de delayShort() à 100-200ms
@@ -465,12 +465,16 @@ export default async function Pages_jaunes(object, city, fileName) {
                 console.log('Clic sur le bouton cookie réussi');
                 await delayShort();
             } else {
-                console.log('Aucun bouton cookie trouvé, continuation...');
+                console.log('On continue sans accepter les cookies.');
             }
 
             // Le clic a déjà été effectué directement sur le bouton trouvé
             console.log('Gestion des cookies terminée.');
             await delayShort();
+            
+            // Mini-test pour iframe lazy-load après le clic initial
+            await page.$('button[aria-label*="données"]')?.click().catch(() => console.log('Pas de bouton de cookies lazy-load trouvé ou cliqué.'));
+
 
         } catch (error) {
             console.log('Aucune popup de cookies détectée ou déjà gérée.');
@@ -530,7 +534,7 @@ export default async function Pages_jaunes(object, city, fileName) {
         let hasNextPage = true;
 
         // Taille du batch pour traiter les entreprises
-        const poolSize = 15;
+        const poolSize = 5; // Réduit de 15 à 5 pour limiter la consommation de mémoire
 
         while (hasNextPage) {
             // Attendre que les résultats se chargent avec les nouveaux sélecteurs
@@ -571,9 +575,9 @@ export default async function Pages_jaunes(object, city, fileName) {
                 });
 
                 if (totalResultsText) {
-                    const match = totalResultsText.match(/\d[\d\s]*/g);
+                    const match = totalResultsText.match(/\\d[\\d\\s]*/g);
                     if (match && match.length > 0) {
-                        totalResults = parseInt(match[0].replace(/\s/g, ''), 10);
+                        totalResults = parseInt(match[0].replace(/\\s/g, ''), 10);
                         console.log(`Nombre total de résultats trouvés: ${totalResults}`);
                     } else {
                         console.log('Le texte du nombre de résultats ne contient pas de chiffres.');
@@ -705,7 +709,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                 const isValidProsLink = (link.includes('/pros/') &&
                                        !link.includes('chercherlespros') &&
                                        !link.includes('recherche') &&
-                                       (link.match(/\\/pros\\/\\d+/) || link.includes('code_etablissement='))); // Accepte les liens avec code_etablissement
+                                       (link.match(/\/pros\/\d+/) || link.includes('code_etablissement='))); // Accepte les liens avec code_etablissement
 
                 if (!isValidProsLink) {
                     console.log(`Lien filtré: ${link}`);
@@ -781,13 +785,13 @@ export default async function Pages_jaunes(object, city, fileName) {
                 const batchResults = await Promise.all(batchResultsPromises);
                 const validResults = batchResults.filter(Boolean);
                 allData.push(...validResults);
+                totalProcessed += validResults.length; // Incrémenter totalProcessed ici
 
                 // Écrire les données par petits lots pour éviter la perte de données
                 if (allData.length >= 10) {
                     const batchToWrite = allData.splice(0, allData.length);
                     await csvWriter.writeRecords(batchToWrite);
                     console.log(`Écriture de ${batchToWrite.length} enregistrements dans le CSV (batch).`);
-                    totalProcessed += validResults.length; // Déplacer ici l'incrémentation
                 }
 
                 // Afficher le progrès avec le total si disponible
@@ -799,13 +803,11 @@ export default async function Pages_jaunes(object, city, fileName) {
             }
 
             // === ⏭️ Tentative de passer à la page suivante ===
-
-            // 1. Capture des premiers éléments de la liste actuelle pour vérifier le changement
-            const previousLinks = await page.$$eval('li.bi', els =>
+            console.log('🔄 Tentative de pagination…');
+            const before = await page.$$eval('li.bi', els =>
               els.slice(0,3).map(e => e.textContent.trim())
             );
 
-            // 2. Sélection du bouton "Suivant"
             const nextBtn =
               await page.$('#pagination-next')              ||
               await page.$('a[rel="next"]');
@@ -817,18 +819,15 @@ export default async function Pages_jaunes(object, city, fileName) {
               // 3. Clic réel sur le bouton + surveillance du changement de contenu
               try {
                 await Promise.all([
-
                   nextBtn.click(),
                   page.waitForFunction(
                     (prev) => {
                       const cur = [...document.querySelectorAll('li.bi')]
-
                                   .slice(0,3).map(e => e.textContent.trim());
                       return JSON.stringify(cur) !== JSON.stringify(prev);
                     },
-
                     {timeout: 25000}, // Augmenter le timeout pour la stabilité
-                    previousLinks
+                    before
                   ),
                   page.waitForTimeout(500 + Math.random() * 800) // Petit delay random anti-bot
                 ]);
@@ -851,6 +850,7 @@ export default async function Pages_jaunes(object, city, fileName) {
         if (allData.length > 0) {
             await csvWriter.writeRecords(allData);
             console.log('Écriture des derniers enregistrements dans le CSV.');
+            allData.length = 0; // Vider le tableau après écriture
         }
 
 
