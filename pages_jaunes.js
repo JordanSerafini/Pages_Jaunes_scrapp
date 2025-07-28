@@ -430,6 +430,42 @@ export default async function Pages_jaunes(object, city, fileName) {
             await delayShort();
             console.log('Résultats de recherche chargés.');
 
+            // Extraire le nombre total de résultats
+            let totalResults = 0;
+            try {
+                totalResults = await page.evaluate(() => {
+                    // Chercher le nombre de résultats dans différents sélecteurs
+                    const selectors = [
+                        '#SEL-nbresultat',
+                        '.pjts_nbresultat span',
+                        '.denombrement span',
+                        '[class*="nbresultat"]',
+                        '[id*="nbresultat"]'
+                    ];
+                    
+                    for (const selector of selectors) {
+                        const element = document.querySelector(selector);
+                        if (element) {
+                            const text = element.textContent.trim();
+                            // Extraire les chiffres du texte (ex: "3 759 résultats" -> 3759)
+                            const match = text.match(/(\d[\d\s]*)/);
+                            if (match) {
+                                return parseInt(match[1].replace(/\s/g, ''));
+                            }
+                        }
+                    }
+                    return 0;
+                });
+                
+                if (totalResults > 0) {
+                    console.log(`Nombre total de résultats trouvés: ${totalResults}`);
+                } else {
+                    console.log('Nombre total de résultats non trouvé');
+                }
+            } catch (error) {
+                console.log('Erreur lors de l\'extraction du nombre total de résultats:', error.message);
+            }
+
             // Vérifier que nous sommes bien sur une page de résultats
             let isResultsPage = false;
             try {
@@ -599,7 +635,13 @@ export default async function Pages_jaunes(object, city, fileName) {
                 const validResults = batchResults.filter(Boolean);
                 allData.push(...validResults);
                 totalProcessed += validResults.length;
-                console.log(`Total traité jusqu'ici: ${totalProcessed} entreprises`);
+                
+                // Afficher le progrès avec le total si disponible
+                if (totalResults > 0) {
+                    console.log(`Progrès: ${totalProcessed}/${totalResults} entreprises (${Math.round((totalProcessed/totalResults)*100)}%)`);
+                } else {
+                    console.log(`Total traité jusqu'ici: ${totalProcessed} entreprises`);
+                }
 
                 // Écrire les données par petits lots pour éviter la perte de données
                 if (allData.length >= 10) {
