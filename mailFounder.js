@@ -16,7 +16,7 @@ export const extractEmails = (htmlContent) => {
 
 // Fonction principale
 export const fetchGoogleSearchHTML = async (query) => {
-    const browser = await puppeteer.launch({ headless: false });
+    const browser = await puppeteer.launch({ headless: true });
     const page = await browser.newPage();
 
     try {
