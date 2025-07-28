@@ -4,15 +4,15 @@ import puppeteer from 'puppeteer';
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Fonction pour extraire les emails
-const extractEmails = (htmlContent) => {
+export const extractEmails = (htmlContent) => {
     // Expression régulière pour extraire les emails
     const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
     const emails = htmlContent.match(emailRegex);
-    return emails ? [...new Set(emails)] : []; // Enlever les doublons et renvoyer un tableau
+    return emails ? [...new Set(emails)] : [];
 };
 
 // Fonction principale
-const fetchGoogleSearchHTML = async (query) => {
+export const fetchGoogleSearchHTML = async (query) => {
     const browser = await puppeteer.launch({ headless: false });
     const page = await browser.newPage();
 

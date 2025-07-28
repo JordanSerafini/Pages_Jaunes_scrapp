@@ -30,7 +30,7 @@ export default async function Pages_jaunes(object, city, fileName) {
         append: true
     });
 
-    const browser = await puppeteer.launch({ headless: false });
+    const browser = await puppeteer.launch({ headless: false, protocolTimeout: 90000 });
     
     try {
         const page = await browser.newPage();
