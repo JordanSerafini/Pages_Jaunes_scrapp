@@ -393,14 +393,25 @@ export default async function Pages_jaunes(object, city, fileName) {
                                 return info;
                             });
 
+                            // Nettoyer les données pour éviter les problèmes de format CSV
+                            const cleanData = (text) => {
+                                if (!text) return '';
+                                return text
+                                    .replace(/\n/g, ' ') // Remplacer les retours à la ligne par des espaces
+                                    .replace(/\r/g, ' ') // Remplacer les retours chariot par des espaces
+                                    .replace(/\t/g, ' ') // Remplacer les tabulations par des espaces
+                                    .replace(/\s+/g, ' ') // Remplacer les espaces multiples par un seul espace
+                                    .trim(); // Supprimer les espaces en début et fin
+                            };
+
                             // Ajouter les données
                             allData.push({
-                                name: companyInfo.name || 'Nom non trouvé',
-                                address: companyInfo.address || 'Adresse non trouvée',
-                                phone: companyInfo.phone || 'Numéro non trouvé',
-                                website: companyInfo.website || 'Site web non trouvé',
-                                email: companyInfo.email || 'Email non trouvé',
-                                additionalInfo: companyInfo.additionalInfo || ''
+                                name: cleanData(companyInfo.name) || 'Nom non trouvé',
+                                address: cleanData(companyInfo.address) || 'Adresse non trouvée',
+                                phone: cleanData(companyInfo.phone) || 'Numéro non trouvé',
+                                website: cleanData(companyInfo.website) || 'Site web non trouvé',
+                                email: cleanData(companyInfo.email) || 'Email non trouvé',
+                                additionalInfo: cleanData(companyInfo.additionalInfo) || ''
                             });
 
                             console.log(`Entreprise traitée : ${companyInfo.name}`);
@@ -670,14 +681,25 @@ export default async function Pages_jaunes(object, city, fileName) {
                             return info;
                         });
 
+                        // Nettoyer les données pour éviter les problèmes de format CSV
+                        const cleanData = (text) => {
+                            if (!text) return '';
+                            return text
+                                .replace(/\n/g, ' ') // Remplacer les retours à la ligne par des espaces
+                                .replace(/\r/g, ' ') // Remplacer les retours chariot par des espaces
+                                .replace(/\t/g, ' ') // Remplacer les tabulations par des espaces
+                                .replace(/\s+/g, ' ') // Remplacer les espaces multiples par un seul espace
+                                .trim(); // Supprimer les espaces en début et fin
+                        };
+
                         // Ajouter les données à la liste
                         allData.push({
-                            name: companyInfo.name || 'Nom non trouvé',
-                            address: companyInfo.address || 'Adresse non trouvée',
-                            phone: companyInfo.phone || 'Numéro non trouvé',
-                            website: companyInfo.website || 'Site web non trouvé',
-                            email: companyInfo.email || 'Email non trouvé',
-                            additionalInfo: companyInfo.additionalInfo || ''
+                            name: cleanData(companyInfo.name) || 'Nom non trouvé',
+                            address: cleanData(companyInfo.address) || 'Adresse non trouvée',
+                            phone: cleanData(companyInfo.phone) || 'Numéro non trouvé',
+                            website: cleanData(companyInfo.website) || 'Site web non trouvé',
+                            email: cleanData(companyInfo.email) || 'Email non trouvé',
+                            additionalInfo: cleanData(companyInfo.additionalInfo) || ''
                         });
 
                         console.log(`Entreprise traitée : ${companyInfo.name}`);
@@ -694,12 +716,29 @@ export default async function Pages_jaunes(object, city, fileName) {
                 // Revenir à la page de résultats après avoir traité tous les liens
                 console.log('Retour à la page de résultats...');
                 
-                // Sauvegarder l'URL de la page de résultats originale
-                const resultsPageUrl = `https://www.pagesjaunes.fr/recherche?quoiqui=${encodeURIComponent(object)}&ou=${encodeURIComponent(city)}`;
+                // Essayer d'abord de cliquer sur "Retour aux résultats" si disponible
+                const backToResults = await page.evaluate(() => {
+                    // Chercher le lien "Retour aux résultats"
+                    const links = Array.from(document.querySelectorAll('a'));
+                    const backLink = links.find(link => 
+                        link.textContent.includes('Retour aux résultats') ||
+                        link.textContent.includes('Retour') ||
+                        link.href.includes('recherche')
+                    );
+                    return backLink ? backLink.href : null;
+                });
                 
-                // Naviguer directement vers la page de résultats
-                await page.goto(resultsPageUrl, { waitUntil: 'networkidle2' });
-                await delay(1000, 2000); // Délai réduit
+                if (backToResults) {
+                    console.log('Clic sur "Retour aux résultats"...');
+                    await page.goto(backToResults, { waitUntil: 'domcontentloaded' });
+                    await delay(1000, 2000);
+                } else {
+                    // Si pas de lien "Retour aux résultats", naviguer directement
+                    const resultsPageUrl = `https://www.pagesjaunes.fr/recherche?quoiqui=${encodeURIComponent(object)}&ou=${encodeURIComponent(city)}`;
+                    console.log('Navigation directe vers la page de résultats...');
+                    await page.goto(resultsPageUrl, { waitUntil: 'domcontentloaded' });
+                    await delay(1000, 2000);
+                }
                 
                 // Vérifier que nous sommes bien sur la page de résultats
                 const isBackOnResultsPage = await page.evaluate(() => {
