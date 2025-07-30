@@ -29,20 +29,20 @@ const SELECTORS = {
     companyRoot: 'div.bi-content, h1, .bi-denomination',
     showNumberBtn: 'button[aria-label*="Afficher le N°"]',
     phoneSelectors: [
-        '.coord-numero',
-        '.number-contact span',
-        '.bi-ctas .btn_tel + span',
-        'span[aria-label*="numéro"]',
-        '.contact-info span',
-        '.phone-number',
-        '.coord-liste-numero span'
+            '.coord-numero',
+            '.number-contact span',
+            '.bi-ctas .btn_tel + span',
+            'span[aria-label*="numéro"]',
+            '.contact-info span',
+            '.phone-number',
+            '.coord-liste-numero span'
     ],
     websiteSelectors: [
-        'a.MINISITE.pj-link',
-        'a[class*="MINISITE"]',
-        'a[href*="http"]:not([href*="pagesjaunes"]):not([href*="solocal"]):not([href*="audit-digital"])',
-        'a.SITE_EXTERNE',
-        'a[href^="http"]:not([href*="pagesjaunes"]):not([href*="solocal"])'
+            'a.MINISITE.pj-link',
+            'a[class*="MINISITE"]',
+            'a[href*="http"]:not([href*="pagesjaunes"]):not([href*="solocal"]):not([href*="audit-digital"])',
+            'a.SITE_EXTERNE',
+            'a[href^="http"]:not([href*="pagesjaunes"]):not([href*="solocal"])'
     ],
     cookieLabels: [
         'Accepter la collecte de vos données',
@@ -543,7 +543,7 @@ export default async function Pages_jaunes(object, city, fileName) {
                 } catch (error2) {
                     console.log('❌ Sélecteur .bi-denomination non trouvé, tentative avec a[href*="/pros/"]...');
                     try {
-                        await page.waitForSelector('a[href*="/pros/"]', { visible: true, timeout: 25000 });
+                    await page.waitForSelector('a[href*="/pros/"]', { visible: true, timeout: 25000 });
                         console.log('✅ Résultats trouvés avec sélecteur a[href*="/pros/"]');
                     } catch (error3) {
                         console.log('❌ Aucun sélecteur de résultats trouvé, arrêt du traitement');
@@ -643,17 +643,11 @@ export default async function Pages_jaunes(object, city, fileName) {
                                 console.log('Structure HTML du premier listing:', listing.innerHTML);
                             }
                             
-                            // Nom de l'entreprise - essayer plusieurs sélecteurs
-                            let nameElement = listing.querySelector('.bi-denomination, .bi-header-title, h3 a, .bi-content h3');
-                            if (!nameElement) {
-                                // Essayer d'autres sélecteurs
-                                nameElement = listing.querySelector('h3, .bi-header, .bi-title, a[href*="/pros/"]');
-                            }
-                            
+                            // Nom de l'entreprise - d'après la structure HTML, le nom est dans h3 à l'intérieur de .bi-denomination
+                            const nameElement = listing.querySelector('.bi-denomination h3');
                             if (nameElement) {
-                                // Nettoyer le nom en supprimant les éléments parasites
                                 let name = nameElement.textContent.trim();
-                                // Supprimer les éléments "En savoir plus", "Ouvrir la tooltip", etc.
+                                // Nettoyer le nom en supprimant les éléments parasites
                                 name = name.replace(/En savoir plus.*$/g, '')
                                          .replace(/Ouvrir la tooltip.*$/g, '')
                                          .replace(/Contenu édité par le professionnel.*$/g, '')
@@ -670,51 +664,74 @@ export default async function Pages_jaunes(object, city, fileName) {
                                 }
                             }
                             
-                            // Adresse - sélecteurs plus précis
-                            const addressElement = listing.querySelector('.bi-adresse, .address, .bi-content .bi-adresse, .bi-content > div:nth-child(2)');
+                            // Adresse - d'après la structure HTML, l'adresse est dans .bi-address a
+                            const addressElement = listing.querySelector('.bi-address a');
                             if (addressElement) {
                                 let address = addressElement.textContent.trim();
-                                // Supprimer les éléments parasites
-                                address = address.replace(/Ecrire un avis.*$/g, '')
+                                // Supprimer les éléments parasites comme "Voir le plan", "avis", etc.
+                                address = address.replace(/Voir le plan.*$/g, '')
+                                               .replace(/Ecrire un avis.*$/g, '')
                                                .replace(/avis.*$/g, '')
+                                               .replace(/\(\d+\s*avis\).*$/g, '') // Supprimer "(X avis)"
+                                               .replace(/Note.*$/g, '') // Supprimer les notes
                                                .replace(/\s+/g, ' ')
                                                .trim();
                                 info.address = address;
                             }
                             
-                            // Téléphone - sélecteurs plus précis
-                            const phoneElements = listing.querySelectorAll('.coord-numero, .number-contact span, .phone-number, .bi-coord .coord-numero');
-                            const phones = [];
-                            phoneElements.forEach(el => {
-                                const phone = el.textContent.trim();
-                                // Validation plus stricte des numéros de téléphone
+                            // Téléphone - essayer d'extraire directement s'il est visible
+                            const phoneElement = listing.querySelector('.bi-fantomas .number-contact');
+                            if (phoneElement) {
+                                let phone = phoneElement.textContent.trim();
+                                // Nettoyer le numéro (supprimer "Tél : " etc.)
+                                phone = phone.replace(/Tél\s*:\s*/g, '').trim();
+                                // Validation du numéro de téléphone
                                 if (/^0[1-9]\d{8}$/.test(phone.replace(/\s/g, ''))) {
-                                    phones.push(phone);
+                                    info.phone = phone;
                                 }
-                            });
-                            info.phone = phones.join('; ');
+                            }
                             
-                            // Site web - sélecteurs plus précis
-                            const websiteElement = listing.querySelector('a[href*="http"]:not([href*="pagesjaunes"]):not([href*="solocal"]):not([href*="mailto"])');
+                            // Site web - d'après la structure HTML, chercher les liens externes
+                            const websiteElement = listing.querySelector('a[href*="http"]:not([href*="pagesjaunes"]):not([href*="solocal"]):not([href*="mailto"]):not([href*="goo.gle"])');
                             if (websiteElement) {
                                 info.website = websiteElement.href;
                             }
                             
-                            // Email - sélecteurs plus précis
+                            // Email - d'après la structure HTML, chercher les liens mailto
                             const emailElement = listing.querySelector('a[href^="mailto:"], .email, .bi-coord a[href^="mailto:"]');
                             if (emailElement) {
                                 info.email = emailElement.href.replace('mailto:', '') || emailElement.textContent.trim();
                             }
                             
-                            // Informations supplémentaires - sélecteurs plus précis
-                            const additionalElements = listing.querySelectorAll('.bi-desc, .bi-activity-unit-small, .bi-stars, .bi-content .bi-desc');
+                            // Informations supplémentaires - d'après la structure HTML, récupérer description, activité et tags
                             const additional = [];
-                            additionalElements.forEach(el => {
+                            
+                            // Description principale
+                            const descriptionElement = listing.querySelector('.bi-description');
+                            if (descriptionElement) {
+                                let text = descriptionElement.textContent.trim();
+                                text = text.replace(/En savoir plus.*$/g, '')
+                                           .replace(/Ouvrir la tooltip.*$/g, '')
+                                           .replace(/Contenu édité par le professionnel.*$/g, '')
+                                           .replace(/\s+/g, ' ')
+                                           .trim();
+                                if (text) additional.push(text);
+                            }
+                            
+                            // Unité d'activité
+                            const activityUnitElement = listing.querySelector('.bi-activity-unit');
+                            if (activityUnitElement) {
+                                const text = activityUnitElement.textContent.trim();
+                                if (text) additional.push(text);
+                            }
+
+                            // Tags
+                            const tagsElements = listing.querySelectorAll('.bi-tags-list .bi-tag');
+                            tagsElements.forEach(el => {
                                 const text = el.textContent.trim();
-                                if (text && !text.includes('En savoir plus') && !text.includes('Ouvrir la tooltip')) {
-                                    additional.push(text);
-                                }
+                                if (text) additional.push(text);
                             });
+
                             info.additionalInfo = additional.join(' | ');
                             
                             // Lien vers la page de détail
@@ -731,6 +748,22 @@ export default async function Pages_jaunes(object, city, fileName) {
                     
                     return companies;
                 });
+                
+                // Cliquer sur tous les boutons "Afficher le N°" pour révéler les numéros
+                console.log('🔍 Révélation des numéros de téléphone...');
+                await page.evaluate(() => {
+                    const phoneButtons = document.querySelectorAll('button[aria-label*="Afficher le N°"], button[aria-label*="Afficher le numéro"]');
+                    phoneButtons.forEach(button => {
+                        try {
+                            button.click();
+                        } catch (error) {
+                            console.log('Erreur lors du clic sur le bouton téléphone:', error.message);
+                        }
+                    });
+                });
+                
+                // Attendre que les numéros apparaissent
+                await delay(1000, 1500);
                 
                 // Traiter les entreprises extraites
                 for (const companyInfo of companiesInfo) {
@@ -772,6 +805,10 @@ export default async function Pages_jaunes(object, city, fileName) {
                                          .replace(/Ouvrir la tooltip.*$/g, '')
                                          .replace(/Contenu édité par le professionnel.*$/g, '')
                                          .replace(/Ecrire un avis.*$/g, '')
+                                         .replace(/Voir le plan.*$/g, '') // Added for address
+                                         .replace(/\(\d+\s*avis\).*$/g, '') // Added for address like "(2 avis)"
+                                         .replace(/Note.*$/g, '') // Supprimer les notes
+                                         .replace(/Tél\s*:\s*/g, '') // Supprimer "Tél : " des numéros
                                          .replace(/\s+/g, ' ')
                                          .trim();
                         
@@ -791,20 +828,20 @@ export default async function Pages_jaunes(object, city, fileName) {
                     console.log(`✅ Entreprise traitée: ${info.name}`);
                     allData.push(info);
                     totalProcessed++;
-                    
+
                     // Afficher les 3 premiers résultats avec console.table
                     if (allData.length > 0 && allData.length <= 3) {
                         console.log('\n📋 PREMIERS RÉSULTATS:');
                         console.table(allData.slice(0, 3));
                     }
-                    
+
                     // Écrire les données par petits lots
                     if (allData.length >= 10) {
                         const batchToWrite = allData.splice(0, allData.length);
                         await csvWriter.writeRecords(batchToWrite);
                         console.log(`💾 Écriture de ${batchToWrite.length} enregistrements dans le CSV (batch).`);
                     }
-                    
+
                     // Afficher le progrès
                     if (typeof totalResults === 'number' && totalResults > 0) {
                         const percentage = Math.round((totalProcessed/totalResults)*100);
@@ -830,35 +867,35 @@ export default async function Pages_jaunes(object, city, fileName) {
             console.log('🔄 Tentative de pagination…');
             
             try {
-                const nextBtn =
-                  await page.$('#pagination-next') ??
-                  await page.$('a[rel="next"]')   ??
-                  await page.$('button[data-pagination="next"]');
+            const nextBtn =
+              await page.$('#pagination-next') ??
+              await page.$('a[rel="next"]')   ??
+              await page.$('button[data-pagination="next"]');
 
-                if (!nextBtn) {
-                  console.log('⛔ Pas de bouton suivant → fin.');
-                  hasNextPage = false;
-                } else {
+            if (!nextBtn) {
+              console.log('⛔ Pas de bouton suivant → fin.');
+              hasNextPage = false;
+            } else {
                   // Vérifier le changement d'URL pour s'assurer que la navigation a fonctionné
                   const prevUrl = page.url();
                   
                   // 1) Armer l'attente de navigation
-                  const navPromise = page.waitForNavigation({waitUntil:'domcontentloaded', timeout: 40000});
+              const navPromise = page.waitForNavigation({waitUntil:'domcontentloaded', timeout: 40000});
 
-                  // 2) Cliquer
-                  await nextBtn.click();
+              // 2) Cliquer
+              await nextBtn.click();
 
-                  // 3) Attendre la navigation
-                  await navPromise;
+              // 3) Attendre la navigation
+              await navPromise;
 
                   // 4) Vérifier qu'on a bien de nouveaux résultats
                   if (page.url() === prevUrl) {
                       console.log('⚠️ Navigation échouée, URL identique après clic');
                       hasNextPage = false;
                   } else {
-                      await page.waitForSelector('li.bi', {visible: true, timeout: 25000});
-                      pageNbr++;
-                      console.log(`✅ Page ${pageNbr} chargée`);
+              await page.waitForSelector('li.bi', {visible: true, timeout: 25000});
+              pageNbr++;
+              console.log(`✅ Page ${pageNbr} chargée`);
                   }
                 }
             } catch (paginationError) {
@@ -936,18 +973,18 @@ export default async function Pages_jaunes(object, city, fileName) {
         for (const p of pagesPool) {
             if (!p.isClosed()) {
                 try {
-                    await p.close();
+                await p.close();
                 } catch (closeError) {
                     console.log('⚠️ Erreur lors de la fermeture d\'une page du pool:', closeError.message);
-                }
             }
+        }
         }
         
         // Fermer le navigateur principal
         if (browser && !browser.isConnected()) {
             try {
-                await browser.close();
-                console.log('Navigateur fermé.');
+        await browser.close();
+        console.log('Navigateur fermé.');
             } catch (closeError) {
                 console.log('⚠️ Erreur lors de la fermeture du navigateur:', closeError.message);
             }
