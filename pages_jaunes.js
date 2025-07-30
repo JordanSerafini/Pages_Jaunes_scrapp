@@ -765,25 +765,54 @@ export default async function Pages_jaunes(object, city, fileName) {
                 // Attendre que les numéros apparaissent
                 await delay(1000, 1500);
                 
+                // Extraire les numéros de téléphone maintenant visibles
+                const phoneNumbers = await page.evaluate(() => {
+                    const phones = [];
+                    const phoneElements = document.querySelectorAll('.bi-fantomas .number-contact');
+                    phoneElements.forEach((el, index) => {
+                        let phone = el.textContent.trim();
+                        // Nettoyer le numéro (supprimer "Tél : " etc.)
+                        phone = phone.replace(/Tél\s*:\s*/g, '').trim();
+                        // Validation du numéro de téléphone
+                        if (/^0[1-9]\d{8}$/.test(phone.replace(/\s/g, ''))) {
+                            phones.push({ index, phone });
+                        }
+                    });
+                    return phones;
+                });
+                
+                // Associer les numéros de téléphone aux entreprises
+                phoneNumbers.forEach(({ index, phone }) => {
+                    if (companiesInfo[index]) {
+                        companiesInfo[index].phone = phone;
+                    }
+                });
+                
                 // Traiter les entreprises extraites
+                let validCompanies = 0;
+                let invalidNames = 0;
+                let duplicateCompanies = 0;
+                
                 for (const companyInfo of companiesInfo) {
                     // Debug: afficher les données extraites pour les premières entreprises
                     if (allData.length < 3) {
                         console.log('Données extraites:', companyInfo);
                     }
                     
-                    // Vérifier que l'entreprise a un nom valide
+                    // Vérifier que l'entreprise a un nom valide - validation plus souple
                     if (!companyInfo.name || 
                         companyInfo.name === 'Nom non trouvé' || 
-                        companyInfo.name.length < 2) {
-                        console.log('❌ Entreprise sans nom valide, passage à la suivante');
+                        companyInfo.name.length < 1) { // Changé de 2 à 1
+                        console.log(`❌ Nom invalide: "${companyInfo.name}"`);
+                        invalidNames++;
                         continue;
                     }
                     
                     // Vérifier si cette entreprise a déjà été traitée
                     const normalizedName = normalizeCompanyName(companyInfo.name, companyInfo.address);
                     if (processedCompanies.has(normalizedName)) {
-                        console.log(`Entreprise déjà traitée, passage à la suivante: ${companyInfo.name}`);
+                        console.log(`🔄 Doublon détecté: ${companyInfo.name} (normalisé: ${normalizedName})`);
+                        duplicateCompanies++;
                         continue;
                     }
                     
@@ -792,6 +821,8 @@ export default async function Pages_jaunes(object, city, fileName) {
                     if (companyInfo.detailUrl) {
                         processedUrls.add(companyInfo.detailUrl);
                     }
+                    
+                    validCompanies++;
                     
                     // Nettoyer les données
                     const cleanSpaces = s => (s || '').replace(/\s+/g,' ').trim();
@@ -851,6 +882,14 @@ export default async function Pages_jaunes(object, city, fileName) {
                     }
                 }
                 
+                // Afficher les statistiques de filtrage
+                console.log(`\n📊 STATISTIQUES DE FILTRAGE:`);
+                console.log(`   • Entreprises trouvées: ${companiesInfo.length}`);
+                console.log(`   • Noms invalides: ${invalidNames}`);
+                console.log(`   • Doublons détectés: ${duplicateCompanies}`);
+                console.log(`   • Entreprises valides traitées: ${validCompanies}`);
+                console.log(`   • Taux de traitement: ${Math.round((validCompanies/companiesInfo.length)*100)}%`);
+
             } catch (extractionError) {
                 console.error('❌ Erreur lors de l\'extraction depuis la page de liste:', extractionError.message);
             }
