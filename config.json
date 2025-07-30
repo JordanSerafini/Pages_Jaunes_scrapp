@@ -1,0 +1,103 @@
+{
+  "selectors": {
+    "name": ["div.bi-content h3", ".bi-denomination", "h1.title-1", ".denomination"],
+    "address": [
+      "div.bi-content > div:nth-child(2)",
+      "a[href*=\"voir-le-plan\"]",
+      ".bi-address",
+      ".address"
+    ],
+    "phone": [".coord-numero", ".number-contact span", ".bi-ctas .btn_tel + span"],
+    "website": [
+      "a.MINISITE.pj-link",
+      "a.SITE_EXTERNE",
+      "a[href^=\"http\"]:not([href*=\"pagesjaunes\"]):not([href*=\"solocal\"])",
+      "a[class*=\"MINISITE\"]"
+    ],
+    "email": ["a[href^=\"mailto:\"]", ".email"],
+    "description": [".bi-desc"],
+    "activity": [".bi-activity-unit-small"],
+    "rating": [".bi-stars .rating", ".bi-stars .nbAvis"],
+    "businessListings": ["li.bi"],
+    "detailLinks": [
+      "a.bi-denomination.pj-link",
+      ".bi-header-title a",
+      ".bi-content a[href*=\"/pros/\"]",
+      "a[href*=\"/pros/\"]",
+      ".bi-clic-mobile a",
+      "a[href*=\"detail\"]"
+    ],
+    "pagination": {
+      "next": [
+        "#pagination-next",
+        "a[aria-label*=\"Suivant\"]",
+        "a[aria-label*=\"Next\"]",
+        "a[title*=\"Suivant\"]",
+        "a[title*=\"Next\"]",
+        "button[aria-label*=\"Suivant\"]",
+        "button[aria-label*=\"Next\"]",
+        ".pagination a:last-child",
+        ".pagination-next",
+        "a[href*=\"page=\"]",
+        "a[href*=\"p=\"]",
+        "a[href*=\"suivant\"]",
+        "a[href*=\"next\"]",
+        ".pagination a[href*=\"2\"]",
+        ".pagination a[href*=\"3\"]",
+        "a[data-page]",
+        "a[data-pagination]",
+        ".pagination .next",
+        ".pagination .suivant"
+      ],
+      "disabled": [".pagination .is-disabled", "button[disabled]", "a.disabled"]
+    },
+    "totalResults": [
+      "#SEL-nbresultat",
+      ".pjts_nbresultat span",
+      ".denombrement span",
+      "[class*=\"nbresultat\"]",
+      "[id*=\"nbresultat\"]",
+      ".search-results-label strong",
+      ".number-of-results"
+    ],
+    "cookies": {
+      "iframe": "button[mode=\"accept-all\"]",
+      "main": "button[aria-label=\"Accepter la collecte de vos données\"]"
+    },
+    "showPhone": "button[aria-label*=\"Afficher le N°\"]"
+  },
+  "delays": {
+    "short": [200, 400],
+    "pageChange": [600, 800],
+    "retry": [500, 2000]
+  },
+  "performance": {
+    "poolSize": 15,
+    "batchSize": 10,
+    "timeouts": {
+      "pageLoad": 15000,
+      "elementWait": 10000,
+      "protocol": 120000
+    }
+  },
+  "userAgents": [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  ],
+  "browserArgs": [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-accelerated-2d-canvas",
+    "--no-first-run",
+    "--no-zygote",
+    "--disable-gpu",
+    "--disable-images",
+    "--disable-javascript-harmony-shipping",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding"
+  ]
+}
